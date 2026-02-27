@@ -206,6 +206,11 @@ class GameViewModel: ObservableObject {
         }
     }
 
+    func returnToMenuFromGameplay() {
+        reset()
+        gameState = .menu
+    }
+
     func reset() {
         stopTally()
         stage = 1

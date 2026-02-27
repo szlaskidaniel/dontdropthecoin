@@ -89,6 +89,7 @@ struct ContentView: View {
 
 struct GameHUD: View {
     @ObservedObject var viewModel: GameViewModel
+    @State private var showExitConfirmation = false
 
     private var timerColor: Color {
         viewModel.timeRemaining <= 10 ? .red : .white
@@ -114,17 +115,32 @@ struct GameHUD: View {
         GeometryReader { geo in
             VStack(spacing: 10) {
                 HStack {
-                    // Left: round
-                    HStack(spacing: 6) {
-                        Text("Round")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                        Text("\(viewModel.stage)")
-                            .font(.system(size: 22, weight: .heavy, design: .rounded))
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                            .animation(.spring(duration: 0.3), value: viewModel.stage)
+                    Menu {
+                        Button(role: .destructive) {
+                            showExitConfirmation = true
+                        } label: {
+                            Label("Return to Home Screen", systemImage: "house.fill")
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Menu")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.6))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                                )
+                        )
                     }
-                    .padding(.leading, 12)
+                    .padding(.leading, 2)
                     .padding(.top, 4)
 
                     Spacer(minLength: 12)
@@ -175,26 +191,39 @@ struct GameHUD: View {
                 }
                 .frame(height: 6)
 
-                // Current score under progress bar
-                Text("\(viewModel.totalScore)")
-                    .font(.system(size: scoreFontSize, weight: .black, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
-                    .contentTransition(.numericText())
-                    .animation(.spring(duration: 0.15), value: viewModel.totalScore)
-                    .padding(.horizontal, scoreHorizontalPadding)
-                    .padding(.vertical, scoreVerticalPadding)
-                    .background {
-                        Capsule(style: .continuous)
-                            .fill(.ultraThinMaterial.opacity(isScoreExpanded ? 0.65 : 0.45))
-                            .overlay {
-                                Capsule(style: .continuous)
-                                    .stroke(Color.white.opacity(isScoreExpanded ? 0.24 : 0.14), lineWidth: 0.8)
-                            }
+                // Score row with Round (left) and score (right)
+                HStack {
+                    HStack(spacing: 6) {
+                        Text("Round")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                        Text("\(viewModel.stage)")
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .animation(.spring(duration: 0.3), value: viewModel.stage)
                     }
-                    .scaleEffect(isScoreExpanded ? 1.0 : 0.86)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .animation(.spring(response: 0.45, dampingFraction: 0.82), value: isScoreExpanded)
+
+                    Spacer(minLength: 10)
+
+                    Text("\(viewModel.totalScore)")
+                        .font(.system(size: scoreFontSize, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
+                        .contentTransition(.numericText())
+                        .animation(.spring(duration: 0.15), value: viewModel.totalScore)
+                        .padding(.horizontal, scoreHorizontalPadding)
+                        .padding(.vertical, scoreVerticalPadding)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(isScoreExpanded ? 0.65 : 0.45))
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(isScoreExpanded ? 0.24 : 0.14), lineWidth: 0.8)
+                                }
+                        }
+                        .scaleEffect(isScoreExpanded ? 1.0 : 0.86)
+                        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: isScoreExpanded)
+                }
             }
             .padding(.top, geo.safeAreaInsets.top + 10)
             .padding(.horizontal, 16)
@@ -225,6 +254,18 @@ struct GameHUD: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .ignoresSafeArea(edges: .top)
+        .confirmationDialog(
+            "Leave Current Game?",
+            isPresented: $showExitConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Return to Home Screen", role: .destructive) {
+                viewModel.returnToMenuFromGameplay()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Your current round progress will be lost.")
+        }
     }
 }
 
