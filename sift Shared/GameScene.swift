@@ -1080,11 +1080,11 @@ class GameScene: SKScene {
 
     // MARK: - Fill Jar
 
-    private func fillJar() {        
-        let crystalCount  = 5
-        let junkCount     = 12
-        let balloonCount  = 3
-        let totalCrystals = 5
+    private func fillJar() {
+        let counts = itemCounts(for: stage)
+        let crystalCount = counts.crystals
+        let junkCount = counts.junk
+        let balloonCount = counts.balloons
         let jarW = jarMaxX - jarMinX
         let cx   = frame.midX
 
@@ -1112,12 +1112,28 @@ class GameScene: SKScene {
             }
         }
 
-        viewModel?.setItemCounts(crystals: totalCrystals, junk: junkCount + balloonCount)
+        viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount)
     }
 
     /// The current stage number (forwarded from the view model for difficulty scaling).
     private var stage: Int {
         viewModel?.stage ?? 1
+    }
+
+    /// Stage-by-stage spawn tuning: start gentle, then ramp to the standard cap.
+    private func itemCounts(for stage: Int) -> (crystals: Int, junk: Int, balloons: Int) {
+        switch stage {
+        case 1:  return (2, 4, 1)
+        case 2:  return (2, 5, 1)
+        case 3:  return (3, 6, 1)
+        case 4:  return (3, 7, 1)
+        case 5:  return (3, 8, 2)
+        case 6:  return (4, 9, 2)
+        case 7:  return (4, 10, 2)
+        case 8:  return (5, 11, 2)
+        case 9:  return (5, 12, 3)
+        default: return (5, 13, 3)
+        }
     }
 
     private func placeEmoji(type: EmojiType, at position: CGPoint) {
