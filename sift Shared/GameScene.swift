@@ -168,6 +168,24 @@ void main() {
 }
 """
 
+/// Crystal glow shader: cheap shimmer and halo without additional light nodes.
+private let crystalGlowShaderSource = """
+void main() {
+    vec2 uv = v_tex_coord;
+    vec4 base = texture2D(u_texture, uv) * v_color_mix.a;
+
+    float alpha = base.a;
+    vec2 centered = uv - vec2(0.5);
+    float dist = length(centered);
+
+    float halo = smoothstep(0.65, 0.2, dist) * alpha;
+    float shimmer = 0.88 + 0.12 * sin((uv.y + uv.x) * 22.0 + u_time * 4.0);
+    vec3 glow = vec3(0.35, 0.95, 1.0) * halo * 0.30 * shimmer;
+
+    gl_FragColor = vec4(base.rgb * shimmer + glow, alpha);
+}
+"""
+
 // MARK: - GameScene
 
 class GameScene: SKScene {
@@ -195,16 +213,16 @@ class GameScene: SKScene {
     /// The primary light source for the scene.
     private var primaryLight: SKLightNode?
 
-    /// Effect node wrapping crystals/balloons for bloom post-processing.
-    private var bloomEffectNode: SKEffectNode?
+    /// Effect node wrapping only static jar visuals, rasterized for performance.
+    private var jarEffectNode: SKEffectNode?
 
     /// Precompiled glass shader — avoid recompilation per frame.
     private let glassShader = SKShader(source: glassShaderSource)
     private let jarStrokeShader = SKShader(source: jarStrokeShaderSource)
+    private let crystalGlowShader = SKShader(source: crystalGlowShaderSource)
 
     /// Texture cache for emoji sprites (avoids re-rendering each frame).
     private var emojiTextureCache: [String: SKTexture] = [:]
-    private var emojiNormalMapCache: [String: SKTexture] = [:]
 
     private var stageWon = false
     private var gameOver = false
@@ -232,8 +250,16 @@ class GameScene: SKScene {
     override func didMove(to view: SKView) {
         backgroundColor = .black
 
-        // Enable post-processing effects on the scene itself
+        view.ignoresSiblingOrder = true
+        view.showsFPS = true
+        view.showsNodeCount = true
+
+        #if os(iOS)
+        // Disable expensive scene effects in low-power mode.
+        shouldEnableEffects = !ProcessInfo.processInfo.isLowPowerModeEnabled
+        #else
         shouldEnableEffects = true
+        #endif
 
         physicsWorld.gravity = CGVector(dx: 0, dy: -gravityStrength)
         physicsWorld.speed = 1.0
@@ -253,17 +279,17 @@ class GameScene: SKScene {
         bgNode.position  = CGPoint(x: frame.midX, y: frame.midY)
         bgNode.zPosition = -10
         bgNode.name      = "background"
-        // Background receives light but does not cast or receive shadows
-        bgNode.lightingBitMask    = LightCategory.scene
+        // Keep background out of dynamic lighting for cheaper draw.
+        bgNode.lightingBitMask    = 0
         bgNode.shadowedBitMask    = 0
         bgNode.shadowCastBitMask  = 0
         addChild(bgNode)
 
-        // --- Dynamic Lighting System ---
+        // --- Single global light ---
         setupLighting()
 
-        // --- Bloom effect node (crystals & balloons rendered through this) ---
-        setupBloomEffectNode()
+        // --- Jar-only rasterized effect node ---
+        setupJarEffectNode()
 
         buildJar()
         fillJar()
@@ -279,18 +305,17 @@ class GameScene: SKScene {
     // MARK: - Dynamic Lighting
 
     private func setupLighting() {
-        // Primary light — top of scene, provides directional lighting and shadows
+        // Single global light for the entire scene.
         let light = SKLightNode()
         light.name = "primaryLight"
         light.position = CGPoint(x: frame.midX, y: frame.maxY - 40)
         light.zPosition = 50
 
         light.categoryBitMask = LightCategory.scene
-        light.lightColor = SKColor(white: 0.9, alpha: 1)
-        // Bright ambient so objects are never too dark — warm neutral tone
-        light.ambientColor = SKColor(red: 0.45, green: 0.42, blue: 0.50, alpha: 1)
+        light.lightColor = SKColor(white: 0.92, alpha: 1)
+        light.ambientColor = SKColor(red: 0.30, green: 0.28, blue: 0.36, alpha: 1)
         light.shadowColor = SKColor(red: 0.0, green: 0.0, blue: 0.05, alpha: 0.22)
-        light.falloff = 0.4  // slower falloff so light reaches the bottom of the jar
+        light.falloff = 0.55
 
         addChild(light)
         primaryLight = light
@@ -303,36 +328,29 @@ class GameScene: SKScene {
 
         fillLight.categoryBitMask = LightCategory.scene
         fillLight.lightColor = SKColor(red: 0.5, green: 0.5, blue: 0.6, alpha: 1)
-        fillLight.ambientColor = SKColor(red: 0, green: 0, blue: 0, alpha: 1)  // no additional ambient
-        fillLight.shadowColor = SKColor(white: 0, alpha: 0)  // fill light casts no shadows
+        fillLight.ambientColor = SKColor(red: 0, green: 0, blue: 0, alpha: 1)
+        fillLight.shadowColor = SKColor(white: 0, alpha: 0)
         fillLight.falloff = 1.0
 
         addChild(fillLight)
     }
 
-    // MARK: - Bloom Effect Node
+    // MARK: - Jar Effect Node
 
-    private func setupBloomEffectNode() {
+    private func setupJarEffectNode() {
         let effectNode = SKEffectNode()
-        effectNode.name = "bloomContainer"
-        effectNode.zPosition = 2
-        effectNode.shouldEnableEffects = true
-        effectNode.shouldRasterize = false
+        effectNode.name = "jarEffectNode"
+        effectNode.zPosition = 6
+        effectNode.shouldEnableEffects = shouldEnableEffects
+        effectNode.shouldRasterize = true
 
-        // Gemstone bloom: chain CIBloom with a cyan-magenta color shift for crystal glow
-        if let bloomFilter = CIFilter(name: "CIBloom"),
-           let colorFilter = CIFilter(name: "CIColorControls") {
-            bloomFilter.setValue(12.0, forKey: kCIInputRadiusKey)
-            bloomFilter.setValue(0.85, forKey: kCIInputIntensityKey)
-            // Slight saturation boost to bring out the gem tones
-            colorFilter.setValue(1.3, forKey: kCIInputSaturationKey)
-            colorFilter.setValue(0.05, forKey: kCIInputBrightnessKey)
-            // Chain: bloom first, then color boost
-            effectNode.filter = bloomFilter
+        if let blurFilter = CIFilter(name: "CIGaussianBlur") {
+            blurFilter.setValue(1.0, forKey: kCIInputRadiusKey)
+            effectNode.filter = blurFilter
         }
 
         addChild(effectNode)
-        bloomEffectNode = effectNode
+        jarEffectNode = effectNode
     }
 
     // MARK: - Jar Construction
@@ -413,6 +431,11 @@ class GameScene: SKScene {
         jarNode.physicsBody = body
         addChild(jarNode)
 
+        let jarVisualRoot = SKNode()
+        jarVisualRoot.name = "jarVisualRoot"
+        jarVisualRoot.zPosition = 0
+        jarEffectNode?.addChild(jarVisualRoot)
+
         // --- Layer 0: Back wall shadow catcher ---
         // A very subtle dark sprite behind the jar that receives faint shadows from objects inside.
         let backWall = SKSpriteNode(color: SKColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 0.12), size: CGSize(
@@ -433,8 +456,8 @@ class GameScene: SKScene {
         innerFill.strokeColor = .clear
         innerFill.fillColor   = SKColor(red: 0.4, green: 0.5, blue: 0.8, alpha: 0.04)
         innerFill.lineJoin    = .round
-        innerFill.zPosition   = -3
-        addChild(innerFill)
+        innerFill.zPosition   = 0
+        jarVisualRoot.addChild(innerFill)
 
         // --- Layer 2: Glass fill with custom shader (specular sheen + inner glow) ---
         // The shader produces near-zero alpha in the center so objects inside remain visible.
@@ -445,9 +468,9 @@ class GameScene: SKScene {
         glassFill.fillColor   = SKColor(white: 1.0, alpha: 0.01)  // near-transparent base; shader drives actual output
         glassFill.fillShader  = glassShader
         glassFill.lineJoin    = .round
-        glassFill.zPosition   = 8
+        glassFill.zPosition   = 2
         glassFill.isAntialiased = true
-        addChild(glassFill)
+        jarVisualRoot.addChild(glassFill)
 
         // --- Layer 3: Main glass outline with gradient stroke shader ---
         let outline = SKShapeNode(path: path)
@@ -459,8 +482,8 @@ class GameScene: SKScene {
         outline.fillColor   = .clear
         outline.strokeShader = jarStrokeShader
         outline.glowWidth   = 2.5
-        outline.zPosition   = 6
-        addChild(outline)
+        outline.zPosition   = 1
+        jarVisualRoot.addChild(outline)
 
         // --- Layer 4: Left-side highlight (light reflection) ---
         let hlPath = CGMutablePath()
@@ -481,8 +504,8 @@ class GameScene: SKScene {
         highlight.lineJoin    = .round
         highlight.fillColor   = .clear
         highlight.glowWidth   = 1.0
-        highlight.zPosition   = 7
-        addChild(highlight)
+        highlight.zPosition   = 3
+        jarVisualRoot.addChild(highlight)
 
         // Jar reflection shimmer particles
         addJarReflectionParticles()
@@ -581,17 +604,6 @@ class GameScene: SKScene {
 
         emojiTextureCache[key] = texture
         return texture
-    }
-
-    /// Generates (or retrieves cached) a normal map for the given emoji type.
-    private func emojiNormalMap(for type: EmojiType) -> SKTexture {
-        let key = type.character
-        if let cached = emojiNormalMapCache[key] { return cached }
-
-        let tex = emojiTexture(for: type)
-        let normalMap = tex.generatingNormalMap(withSmoothness: 0.5, contrast: 1.2)
-        emojiNormalMapCache[key] = normalMap
-        return normalMap
     }
 
     /// Creates a small white circle texture for particle emitters (cross-platform).
@@ -714,20 +726,31 @@ class GameScene: SKScene {
 
     private func placeEmoji(type: EmojiType, at position: CGPoint) {
         let texture = emojiTexture(for: type)
-        let normalMap = emojiNormalMap(for: type)
 
         let sprite = SKSpriteNode(texture: texture)
         sprite.name                  = type.nodeName
         sprite.position              = position
         sprite.size                  = texture.size()
 
-        // --- Lighting & Normal Mapping ---
-        // Emojis are lit by the scene light and receive shadows, but do NOT cast shadows.
-        // Casting shadows from many small overlapping objects produces heavy dark artifacts.
-        sprite.normalTexture          = normalMap
-        sprite.lightingBitMask        = LightCategory.scene
-        sprite.shadowCastBitMask      = 0
-        sprite.shadowedBitMask        = LightCategory.scene
+        // Keep scene lighting, but disable long projected light shadows.
+        sprite.lightingBitMask = LightCategory.scene
+        sprite.shadowCastBitMask = 0
+        sprite.shadowedBitMask = 0
+        if type.isCrystal {
+            sprite.shader = crystalGlowShader
+            sprite.blendMode = .alpha
+        }
+
+        // Small local drop shadow to add depth without expensive long cast shadows.
+        let dropShadow = SKSpriteNode(texture: texture, color: .black, size: texture.size())
+        dropShadow.name = "emojiDropShadow"
+        dropShadow.colorBlendFactor = 1.0
+        dropShadow.alpha = 0.20
+        dropShadow.position = CGPoint(x: 4, y: -4)
+        dropShadow.zPosition = -1
+        dropShadow.xScale = 0.95
+        dropShadow.yScale = 0.85
+        sprite.addChild(dropShadow)
 
         let body = SKPhysicsBody(circleOfRadius: type.radius)
         body.density           = type.density
@@ -748,15 +771,8 @@ class GameScene: SKScene {
         }
 
         sprite.physicsBody = body
-
-        // Crystals and balloons go into the bloom effect node for post-processing glow
-        if type.isCrystal || type.isBalloon {
-            sprite.zPosition = 0  // relative to bloom container
-            bloomEffectNode?.addChild(sprite)
-        } else {
-            sprite.zPosition = 2
-            addChild(sprite)
-        }
+        sprite.zPosition = 2
+        addChild(sprite)
     }
 
     // MARK: - Sticky Web
@@ -940,28 +956,16 @@ class GameScene: SKScene {
             }
         }
 
-        // Collect all dynamic emoji nodes (from both scene and bloom container)
-        var allEmoji: [SKNode] = []
-        for child in children where (child.name == "crystal" || child.name == "junk" || child.name == "balloon") {
-            allEmoji.append(child)
-        }
-        if let bloom = bloomEffectNode {
-            for child in bloom.children where (child.name == "crystal" || child.name == "junk" || child.name == "balloon") {
-                allEmoji.append(child)
-            }
+        // Collect all dynamic emoji nodes from the main scene layer.
+        let allEmoji: [SKNode] = children.filter {
+            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon"
         }
 
         // Exit boost — when an item clears the jar top, give it a satisfying fling
         for child in allEmoji {
             guard let pb = child.physicsBody, pb.isDynamic else { continue }
 
-            // Convert position to scene coordinates for nodes inside bloom container
-            let scenePos: CGPoint
-            if child.parent === bloomEffectNode {
-                scenePos = convert(child.position, from: bloomEffectNode!)
-            } else {
-                scenePos = child.position
-            }
+            let scenePos = child.position
 
             let id = ObjectIdentifier(child)
             if scenePos.y > jarTopY + 10, !boostedNodes.contains(id) {
@@ -1001,13 +1005,7 @@ class GameScene: SKScene {
         for child in allEmoji {
             guard child.physicsBody != nil else { continue }
 
-            // Convert position to scene coordinates
-            let scenePos: CGPoint
-            if child.parent === bloomEffectNode {
-                scenePos = convert(child.position, from: bloomEffectNode!)
-            } else {
-                scenePos = child.position
-            }
+            let scenePos = child.position
 
             // Remove items that have escaped the scene bounds (fell out of jar).
             let outOfBounds =
@@ -1045,11 +1043,8 @@ class GameScene: SKScene {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             #endif
 
-            // Check if all crystals are gone (in both scene and bloom container)
-            var remainingCrystals: [SKNode] = children.filter { $0.name == "crystal" }
-            if let bloom = bloomEffectNode {
-                remainingCrystals.append(contentsOf: bloom.children.filter { $0.name == "crystal" })
-            }
+            // Check if all crystals are gone.
+            let remainingCrystals = children.filter { $0.name == "crystal" }
             if remainingCrystals.isEmpty {
                 gameOver = true
                 viewModel?.gameEnded()
@@ -1068,11 +1063,7 @@ class GameScene: SKScene {
     // MARK: - Win / Game Over
 
     private func checkWinCondition() {
-        // Collect junk/balloon from both scene and bloom container
-        var junkNodes: [SKNode] = children.filter { $0.name == "junk" || $0.name == "balloon" }
-        if let bloom = bloomEffectNode {
-            junkNodes.append(contentsOf: bloom.children.filter { $0.name == "junk" || $0.name == "balloon" })
-        }
+        let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" }
 
         // Stage clear: all junk and balloons gone, crystals still inside
         if junkNodes.isEmpty {
@@ -1083,11 +1074,7 @@ class GameScene: SKScene {
     }
 
     private func showWinEffect() {
-        // Collect crystals from both scene and bloom container
-        var crystalNodes: [SKNode] = children.filter { $0.name == "crystal" }
-        if let bloom = bloomEffectNode {
-            crystalNodes.append(contentsOf: bloom.children.filter { $0.name == "crystal" })
-        }
+        let crystalNodes = children.filter { $0.name == "crystal" }
 
         for crystal in crystalNodes {
             crystal.run(.repeatForever(.sequence([
@@ -1133,13 +1120,7 @@ class GameScene: SKScene {
         }
 
         for crystal in crystalNodes {
-            let scenePos: CGPoint
-            if crystal.parent === bloomEffectNode {
-                scenePos = convert(crystal.position, from: bloomEffectNode!)
-            } else {
-                scenePos = crystal.position
-            }
-            sparkleEffect(at: scenePos)
+            sparkleEffect(at: crystal.position)
         }
 
         #if os(iOS)
@@ -1181,15 +1162,6 @@ class GameScene: SKScene {
         children.filter {
             $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
             $0.name == "banner" || $0.name == "web"
-        }
-        .forEach { node in
-            node.removeAllActions()
-            node.removeFromParent()
-        }
-
-        // Also remove emoji from the bloom container
-        bloomEffectNode?.children.filter {
-            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon"
         }
         .forEach { node in
             node.removeAllActions()
