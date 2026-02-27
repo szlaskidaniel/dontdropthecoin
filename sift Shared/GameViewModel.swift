@@ -21,6 +21,8 @@ class GameViewModel: ObservableObject {
     @Published var junkRemaining: Int = 0
     @Published var stageComplete: Bool = false
     @Published var isGameOver: Bool = false
+    /// One-shot trigger for the dirt animation on Daily Limit screen.
+    @Published var shouldPlayDailyLimitAnimation: Bool = false
     @Published var timeRemaining: Int = 120
 
     @Published var highScore: Int {
@@ -68,6 +70,8 @@ class GameViewModel: ObservableObject {
     func startGame() -> Bool {
         energy.refreshIfNewDay()
         guard !energy.isLimitReached else {
+            // Entered from START while already out of plays: do not replay dirt animation.
+            shouldPlayDailyLimitAnimation = false
             gameState = .dailyLimitReached
             return false
         }
@@ -80,12 +84,19 @@ class GameViewModel: ObservableObject {
     /// Called when the user purchases "Clean the Jar" or watches a rewarded ad.
     func cleanJar() {
         energy.cleanJar()
+        shouldPlayDailyLimitAnimation = false
         gameState = .menu
     }
 
     /// Show the daily limit screen (e.g. when user tries to play from game over).
     func showDailyLimit() {
+        shouldPlayDailyLimitAnimation = false
         gameState = .dailyLimitReached
+    }
+
+    /// Consume the one-shot dirt animation trigger.
+    func consumeDailyLimitAnimation() {
+        shouldPlayDailyLimitAnimation = false
     }
 
     private var currentStageDuration: Int {
@@ -186,8 +197,9 @@ class GameViewModel: ObservableObject {
         if totalScore > highScore {
             highScore = totalScore
         }
-        // On the last free play, go straight to daily limit screen (with dirt animation)
+        // On the last free play, go straight to daily limit screen and play dirt animation once.
         if energy.isLimitReached {
+            shouldPlayDailyLimitAnimation = true
             gameState = .dailyLimitReached
         } else {
             gameState = .gameOver
@@ -201,6 +213,7 @@ class GameViewModel: ObservableObject {
         junkRemaining = 0
         stageComplete = false
         isGameOver = false
+        shouldPlayDailyLimitAnimation = false
         totalScore = 0
         lastStageScore = 0
         lastMultiplier = 1.0

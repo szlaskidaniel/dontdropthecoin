@@ -72,7 +72,7 @@ struct ContentView: View {
                 DailyLimitOverlay(
                     viewModel: viewModel,
                     scene: scene,
-                    playDirtAnimation: viewModel.isGameOver
+                    playDirtAnimation: viewModel.shouldPlayDailyLimitAnimation
                 ) {
                     // After cleaning jar, update scene dirt overlays
                     scene.updateDirtOverlays()
@@ -558,6 +558,8 @@ struct DailyLimitOverlay: View {
         }
         .onAppear {
             if playDirtAnimation {
+                // Consume immediately so the animation is one-shot per trigger.
+                viewModel.consumeDailyLimitAnimation()
                 // Start with lighter dim so the dirt animation is visible on the jar
                 bgOpacity = 0.35
                 // Play SpriteKit dirt explosion, then reveal UI
