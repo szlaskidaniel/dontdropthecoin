@@ -406,6 +406,15 @@ struct GameOverOverlay: View {
                 }
                 .padding(.horizontal, 50)
 
+                Button {
+                    viewModel.gameState = .menu
+                } label: {
+                    Text("Back to Main Menu")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                .padding(.top, 8)
+
                 Spacer()
                     .frame(height: 60)
             }
