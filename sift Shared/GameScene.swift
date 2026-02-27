@@ -639,18 +639,31 @@ class GameScene: SKScene {
         jarVisualRoot.addChild(glowEffectsNode)
 
         // --- Layer 0: Back wall shadow catcher ---
-        // A very subtle dark sprite behind the jar that receives faint shadows from objects inside.
-        let backWall = SKSpriteNode(color: SKColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 0.12), size: CGSize(
-            width: bodyW + 20,
-            height: h + 20
-        ))
+        // Clip the tint to the jar path to avoid showing a rectangular backdrop.
+        let backWallPath = CGMutablePath()
+        backWallPath.addPath(path)
+        backWallPath.closeSubpath()
+
+        let backWallMask = SKShapeNode(path: backWallPath)
+        backWallMask.fillColor = .white
+        backWallMask.strokeColor = .clear
+        backWallMask.isAntialiased = true
+
+        let backWall = SKSpriteNode(
+            color: SKColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 0.12),
+            size: CGSize(width: bodyW + 20, height: h + 20)
+        )
         backWall.position = CGPoint(x: cx, y: by + h / 2)
-        backWall.zPosition = -5
         backWall.name = "jarBackWall"
         backWall.lightingBitMask   = LightCategory.scene
         backWall.shadowedBitMask   = LightCategory.scene
         backWall.shadowCastBitMask = 0
-        addChild(backWall)
+
+        let backWallCropNode = SKCropNode()
+        backWallCropNode.zPosition = -5
+        backWallCropNode.maskNode = backWallMask
+        backWallCropNode.addChild(backWall)
+        addChild(backWallCropNode)
 
         // --- Layer 1: Inner fill (depth tint) ---
         let innerFill = SKShapeNode(path: path)
