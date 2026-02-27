@@ -6,14 +6,25 @@
 import Foundation
 import Combine
 
+enum GameState {
+    case menu
+    case playing
+    case gameOver
+}
+
 class GameViewModel: ObservableObject {
 
+    @Published var gameState: GameState = .menu
     @Published var stage: Int = 1
     @Published var crystalsInJar: Int = 0
     @Published var junkRemaining: Int = 0
     @Published var stageComplete: Bool = false
     @Published var isGameOver: Bool = false
     @Published var timeRemaining: Int = 120
+
+    @Published var highScore: Int {
+        didSet { UserDefaults.standard.set(highScore, forKey: "highScore") }
+    }
 
     /// Total junk count at the start of the current stage (set once per stage).
     @Published var totalJunkAtStart: Int = 0
@@ -40,6 +51,15 @@ class GameViewModel: ObservableObject {
     private var tallyTimer: Timer?
     /// Points awarded per tick during the score tally animation.
     private var tallyPointsPerTick: Int = 0
+
+    init() {
+        self.highScore = UserDefaults.standard.integer(forKey: "highScore")
+    }
+
+    func startGame() {
+        reset()
+        gameState = .playing
+    }
 
     private var currentStageDuration: Int {
         stage <= 5 ? earlyStageDuration : laterStageDuration
@@ -130,6 +150,10 @@ class GameViewModel: ObservableObject {
     func gameEnded() {
         isGameOver = true
         stopTimer()
+        if totalScore > highScore {
+            highScore = totalScore
+        }
+        gameState = .gameOver
     }
 
     func reset() {

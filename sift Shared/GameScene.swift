@@ -440,8 +440,28 @@ class GameScene: SKScene {
         setupJarEffectNode()
 
         buildJar()
-        fillJar()
         startMotion()
+    }
+
+    /// Called from the UI when the player taps Start or Play Again.
+    func beginGame() {
+        // Remove any leftover nodes from a previous game
+        children.filter {
+            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
+            $0.name == "banner" || $0.name == "web"
+        }
+        .forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
+
+        stuckNodes.removeAll()
+        boostedNodes.removeAll()
+        crystalSpawnIndex = 0
+        stageWon = false
+        gameOver = false
+
+        fillJar()
     }
 
     override func willMove(from view: SKView) {

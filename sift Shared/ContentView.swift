@@ -37,8 +37,10 @@ struct ContentView: View {
                     }
                 }
 
-            // ── HUD overlay ──────────────────────────────────────────
-            GameHUD(viewModel: viewModel)
+            // ── HUD overlay (only while playing) ─────────────────────
+            if viewModel.gameState == .playing {
+                GameHUD(viewModel: viewModel)
+            }
 
             // ── Stage clear banner ───────────────────────────────────
             if viewModel.stageComplete {
@@ -52,8 +54,27 @@ struct ContentView: View {
                 }
                 .transition(.opacity)
             }
+
+            // ── Main Menu overlay ────────────────────────────────────
+            if viewModel.gameState == .menu {
+                MainMenuOverlay(viewModel: viewModel) {
+                    viewModel.startGame()
+                    scene.beginGame()
+                }
+                .transition(.opacity)
+            }
+
+            // ── Game Over overlay ────────────────────────────────────
+            if viewModel.gameState == .gameOver {
+                GameOverOverlay(viewModel: viewModel) {
+                    viewModel.startGame()
+                    scene.beginGame()
+                }
+                .transition(.opacity)
+            }
         }
         .background(Color(red: 0.10, green: 0.03, blue: 0.14))
+        .animation(.easeInOut(duration: 0.35), value: viewModel.gameState)
     }
 }
 
@@ -102,11 +123,9 @@ struct GameHUD: View {
                     Spacer(minLength: 12)
 
                     // Right: timer
-                    HStack(spacing: 0) {
+                    HStack(spacing: 4) {
                         Text("Time")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .frame(width: 44, alignment: .leading)
-                        Spacer(minLength: 10)
                         Text("\(viewModel.timeRemaining)")
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
                             .monospacedDigit()
@@ -116,7 +135,7 @@ struct GameHUD: View {
                             .frame(width: 72, alignment: .trailing)
                     }
                     .frame(width: 130, alignment: .trailing)
-                    .padding(.trailing, -14)
+                    .padding(.trailing, 4)
                     .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
@@ -199,6 +218,167 @@ struct GameHUD: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .ignoresSafeArea(edges: .top)
+    }
+}
+
+// MARK: - Main Menu
+
+struct MainMenuOverlay: View {
+    @ObservedObject var viewModel: GameViewModel
+    var onStart: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                Spacer()
+
+                Text("💎")
+                    .font(.system(size: 72))
+
+                Text("Sift")
+                    .font(.system(size: 52, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.30, green: 0.86, blue: 1.00),
+                                Color(red: 0.80, green: 0.30, blue: 1.00)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+
+                if viewModel.highScore > 0 {
+                    VStack(spacing: 4) {
+                        Text("Best Score")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .textCase(.uppercase)
+                            .tracking(1.5)
+
+                        Text("\(viewModel.highScore)")
+                            .font(.system(size: 36, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
+                    }
+                    .padding(.top, 8)
+                }
+
+                Spacer()
+
+                Button(action: onStart) {
+                    Text("START")
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .tracking(2)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.30, green: 0.86, blue: 1.00),
+                                            Color(red: 0.20, green: 0.60, blue: 0.90)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                }
+                .padding(.horizontal, 50)
+
+                Text("Tilt to remove the junk.\nKeep only 💎 crystals!")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.top, 8)
+
+                Spacer()
+                    .frame(height: 60)
+            }
+        }
+    }
+}
+
+// MARK: - Game Over
+
+struct GameOverOverlay: View {
+    @ObservedObject var viewModel: GameViewModel
+    var onPlayAgain: () -> Void
+
+    private var isNewHighScore: Bool {
+        viewModel.totalScore >= viewModel.highScore && viewModel.totalScore > 0
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Spacer()
+
+                Text("Game Over")
+                    .font(.system(size: 46, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(red: 1, green: 0.3, blue: 0.25))
+
+                Text("Round \(viewModel.stage)")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.5))
+
+                VStack(spacing: 6) {
+                    Text("Score")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .textCase(.uppercase)
+                        .tracking(1.5)
+
+                    Text("\(viewModel.totalScore)")
+                        .font(.system(size: 44, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
+                }
+
+                if isNewHighScore {
+                    Text("New Best!")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(red: 1.00, green: 0.85, blue: 0.25))
+                }
+
+                Spacer()
+
+                Button(action: onPlayAgain) {
+                    Text("PLAY AGAIN")
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .tracking(2)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.30, green: 0.86, blue: 1.00),
+                                            Color(red: 0.20, green: 0.60, blue: 0.90)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                }
+                .padding(.horizontal, 50)
+
+                Spacer()
+                    .frame(height: 60)
+            }
+        }
     }
 }
 
