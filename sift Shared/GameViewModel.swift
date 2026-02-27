@@ -17,6 +17,8 @@ class GameViewModel: ObservableObject {
 
     /// Total junk count at the start of the current stage (set once per stage).
     @Published var totalJunkAtStart: Int = 0
+    /// Total crystals at the start of the current stage (set once per stage).
+    @Published var totalCrystalsAtStart: Int = 0
 
     /// Fraction of junk removed so far (0.0 ... 1.0).
     var junkProgress: Double {
@@ -36,7 +38,7 @@ class GameViewModel: ObservableObject {
     private let laterStageDuration = 60
     private var timer: Timer?
     private var tallyTimer: Timer?
-    /// Points awarded per tick of the tally (time remaining × this value).
+    /// Points awarded per tick during the score tally animation.
     private var tallyPointsPerTick: Int = 0
 
     private var currentStageDuration: Int {
@@ -45,6 +47,7 @@ class GameViewModel: ObservableObject {
 
     func setItemCounts(crystals: Int, junk: Int) {
         crystalsInJar = crystals
+        totalCrystalsAtStart = crystals
         junkRemaining = junk
         totalJunkAtStart = junk
         stageComplete = false
@@ -64,16 +67,22 @@ class GameViewModel: ObservableObject {
 
         // Stage multiplier: later stages are worth more
         let stageMultiplier = 1.0 + Double(stage - 1) * 0.15
+        let safeTotalCrystals = max(totalCrystalsAtStart, 1)
+        let crystalPreservation = Double(crystalsInJar) / Double(safeTotalCrystals)
+        // Strong nonlinear weighting so preserving gems always dominates the score.
+        let preservationWeight = pow(crystalPreservation, 3.0)
 
-        // Base points: crystals saved × 100 × stage multiplier — awarded immediately
-        let basePoints = Int(Double(crystalsInJar * 100) * stageMultiplier)
-        lastMultiplier = stageMultiplier
+        // Base points are heavily driven by gems preserved.
+        let crystalBasePoints = Double(totalCrystalsAtStart * 1200)
+        let basePoints = Int((crystalBasePoints * preservationWeight * stageMultiplier).rounded())
+        lastMultiplier = stageMultiplier * preservationWeight
         lastStageScore = basePoints
         totalScore += basePoints
 
-        // Time bonus: each remaining second is worth (5 × stageMultiplier) points,
-        // awarded one tick at a time so the player sees the timer drain to zero.
-        tallyPointsPerTick = max(1, Int(5.0 * stageMultiplier))
+        // Time bonus is secondary, but always visibly tallied per remaining second.
+        // It is still strongly scaled by preserved gems, so gem preservation dominates.
+        let perSecondTimeBonus = max(1, Int((Double(totalCrystalsAtStart * 20) * preservationWeight * stageMultiplier).rounded()))
+        tallyPointsPerTick = perSecondTimeBonus
 
         stageComplete = true
 
@@ -134,6 +143,8 @@ class GameViewModel: ObservableObject {
         lastStageScore = 0
         lastMultiplier = 1.0
         totalJunkAtStart = 0
+        totalCrystalsAtStart = 0
+        tallyPointsPerTick = 0
         timeRemaining = currentStageDuration
         stopTimer()
     }
