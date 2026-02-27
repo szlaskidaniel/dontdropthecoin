@@ -17,6 +17,7 @@ private struct PhysicsCategory {
     static let coin:     UInt32 = 1 << 1
     static let junk:     UInt32 = 1 << 2
     static let balloon:  UInt32 = 1 << 3
+    static let web:      UInt32 = 1 << 4
     static let allEmoji: UInt32 = coin | junk | balloon
 }
 
@@ -147,6 +148,12 @@ class GameScene: SKScene {
     private var gameOver = false
     private var lastHapticTime: TimeInterval = 0
 
+    // MARK: Sticky Web
+    /// Nodes currently stuck in a web zone, keyed by the node. Value is the web node they are stuck in.
+    private var stuckNodes: [SKNode: SKNode] = [:]
+    private let shakeAccelerationThreshold: Double = 2.5
+    private var lastShakeTime: TimeInterval = 0
+
     // MARK: - Factory
 
     class func newGameScene() -> GameScene {
@@ -263,7 +270,22 @@ class GameScene: SKScene {
             placeEmoji(type: .balloon, at: CGPoint(x: x, y: y))
         }
 
+        // Spawn sticky webs (obstacle zones) — only from stage 10 onward
+        if stage >= 10 {
+            let webCount = min(stage - 9, 3)  // 1 web at stage 10, up to 3
+            for _ in 0..<webCount {
+                let x = CGFloat.random(in: (cx - jarW * 0.25)...(cx + jarW * 0.25))
+                let y = CGFloat.random(in: jarBottomY + 80 ... jarBottomY + 220)
+                placeWeb(at: CGPoint(x: x, y: y))
+            }
+        }
+
         viewModel?.setItemCounts(coins: coinCount, junk: junkCount + balloonCount)
+    }
+
+    /// The current stage number (forwarded from the view model for difficulty scaling).
+    private var stage: Int {
+        viewModel?.stage ?? 1
     }
 
     private func placeEmoji(type: EmojiType, at position: CGPoint) {
@@ -285,15 +307,124 @@ class GameScene: SKScene {
         body.categoryBitMask   = type.physicsCategory
         body.collisionBitMask  = PhysicsCategory.allEmoji | PhysicsCategory.wall
 
-        // Coins report contact with walls (for haptics)
+        // All emoji report contact with webs; coins also with walls (for haptics)
         if type.isCoin {
-            body.contactTestBitMask = PhysicsCategory.wall
+            body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
         } else {
-            body.contactTestBitMask = 0
+            body.contactTestBitMask = PhysicsCategory.web
         }
 
         label.physicsBody = body
         addChild(label)
+    }
+
+    // MARK: - Sticky Web
+
+    private func placeWeb(at position: CGPoint) {
+        let webRadius: CGFloat = 50
+
+        // Visual: 🕸️ emoji with a semi-transparent radial glow behind it
+        let webNode = SKNode()
+        webNode.name = "web"
+        webNode.position = position
+        webNode.zPosition = 1
+
+        // Radial glow background
+        let glow = SKShapeNode(circleOfRadius: webRadius)
+        glow.fillColor = SKColor(white: 1.0, alpha: 0.06)
+        glow.strokeColor = SKColor(white: 1.0, alpha: 0.15)
+        glow.lineWidth = 1.5
+        glow.glowWidth = 4
+        glow.name = "webGlow"
+        webNode.addChild(glow)
+
+        // Emoji label
+        let label = SKLabelNode(text: "🕸️")
+        label.fontSize = 56
+        label.verticalAlignmentMode = .center
+        label.horizontalAlignmentMode = .center
+        label.alpha = 0.85
+        webNode.addChild(label)
+
+        // Sensor physics body — detects overlap but does not collide
+        let body = SKPhysicsBody(circleOfRadius: webRadius)
+        body.isDynamic = false
+        body.categoryBitMask = PhysicsCategory.web
+        body.collisionBitMask = 0  // sensor only
+        body.contactTestBitMask = PhysicsCategory.allEmoji
+        webNode.physicsBody = body
+
+        // Subtle idle animation
+        let pulse = SKAction.sequence([
+            .scale(to: 1.06, duration: 1.8),
+            .scale(to: 0.94, duration: 1.8)
+        ])
+        webNode.run(.repeatForever(pulse))
+
+        addChild(webNode)
+    }
+
+    /// Capture a node into a web: kill velocity, disable gravity, drift toward web center.
+    private func captureInWeb(_ node: SKNode, web: SKNode) {
+        guard stuckNodes[node] == nil else { return }  // already stuck
+        guard let pb = node.physicsBody else { return }
+
+        stuckNodes[node] = web
+
+        // Drastically reduce velocity
+        pb.velocity = CGVector(
+            dx: pb.velocity.dx * 0.1,
+            dy: pb.velocity.dy * 0.1
+        )
+        pb.angularVelocity *= 0.1
+        pb.affectedByGravity = false
+        pb.linearDamping = 8.0  // heavy drag to keep it stuck
+
+        // Drift node toward web center to look "anchored"
+        let drift = SKAction.move(to: web.position, duration: 0.6)
+        drift.timingMode = .easeOut
+        node.run(drift, withKey: "webDrift")
+
+        // Visual feedback for coins: add a color overlay to signal they're stuck
+        if node.name == "coin", let label = node as? SKLabelNode {
+            let tint = SKAction.colorize(with: .purple, colorBlendFactor: 0.4, duration: 0.3)
+            label.run(tint, withKey: "stuckTint")
+        }
+    }
+
+    /// Release all stuck nodes from webs — called on shake.
+    private func releaseAllFromWebs() {
+        for (node, _) in stuckNodes {
+            guard let pb = node.physicsBody else { continue }
+
+            node.removeAction(forKey: "webDrift")
+
+            // Re-enable gravity (unless it's a balloon)
+            let isBalloon = node.name == "balloon"
+            pb.affectedByGravity = !isBalloon
+            pb.linearDamping = isBalloon ? 2.0 : 0.12
+
+            // Small random pop impulse
+            let ix = CGFloat.random(in: -30...30)
+            let iy = CGFloat.random(in: 20...60)
+            pb.applyImpulse(CGVector(dx: ix, dy: iy))
+
+            // Remove stuck tint from coins
+            if node.name == "coin", let label = node as? SKLabelNode {
+                label.removeAction(forKey: "stuckTint")
+                let restore = SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.25)
+                label.run(restore)
+            }
+
+            // Small sparkle at the release point
+            sparkleEffect(at: node.position)
+        }
+
+        stuckNodes.removeAll()
+
+        #if os(iOS)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
     }
 
     // MARK: - CoreMotion (tilt)
@@ -305,6 +436,18 @@ class GameScene: SKScene {
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             guard let self, let motion else { return }
 
+            // --- Shake detection (user acceleration, not gravity) ---
+            let ua = motion.userAcceleration
+            let accelMagnitude = sqrt(ua.x * ua.x + ua.y * ua.y + ua.z * ua.z)
+            let now = CACurrentMediaTime()
+            if accelMagnitude > self.shakeAccelerationThreshold,
+               now - self.lastShakeTime > 0.6,
+               !self.stuckNodes.isEmpty {
+                self.lastShakeTime = now
+                self.releaseAllFromWebs()
+            }
+
+            // --- Tilt-based gravity ---
             let gx = CGFloat(motion.gravity.x)
             let gy = CGFloat(motion.gravity.y)
             let projectedMagnitude = hypot(gx, gy)
@@ -356,7 +499,24 @@ class GameScene: SKScene {
 
         // Apply upward force to balloons (negative gravity effect)
         for child in children where child.name == "balloon" {
-            child.physicsBody?.applyForce(CGVector(dx: 0, dy: balloonLiftForce))
+            if stuckNodes[child] == nil {  // only if not stuck in a web
+                child.physicsBody?.applyForce(CGVector(dx: 0, dy: balloonLiftForce))
+            }
+        }
+
+        // Keep stuck nodes anchored — dampen any residual velocity each frame
+        for (node, web) in stuckNodes {
+            guard let pb = node.physicsBody else { continue }
+            pb.velocity = CGVector(dx: pb.velocity.dx * 0.3, dy: pb.velocity.dy * 0.3)
+            pb.angularVelocity *= 0.3
+
+            // Web stretching visual: scale the web glow based on distance between node and web center
+            let dist = hypot(node.position.x - web.position.x,
+                             node.position.y - web.position.y)
+            let stretch = 1.0 + min(dist / 100.0, 0.3)  // subtle scale increase
+            if let glow = web.childNode(withName: "webGlow") as? SKShapeNode {
+                glow.setScale(stretch)
+            }
         }
 
         var removedJunk = 0
@@ -382,6 +542,7 @@ class GameScene: SKScene {
                 } else if child.name == "balloon" {
                     removedBalloons += 1
                 }
+                stuckNodes.removeValue(forKey: child)
                 child.removeFromParent()
             }
         }
@@ -497,13 +658,17 @@ class GameScene: SKScene {
     // MARK: - Stage Transition
 
     private func startNextStage() {
-        // Remove all emoji nodes and banners
-        children.filter { $0.name == "coin" || $0.name == "junk" || $0.name == "balloon" || $0.name == "banner" }
-            .forEach { node in
-                node.removeAllActions()
-                node.removeFromParent()
-            }
+        // Remove all emoji, web, and banner nodes
+        children.filter {
+            $0.name == "coin" || $0.name == "junk" || $0.name == "balloon" ||
+            $0.name == "banner" || $0.name == "web"
+        }
+        .forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
 
+        stuckNodes.removeAll()
         viewModel?.nextStage()
         stageWon = false
         fillJar()
@@ -545,6 +710,27 @@ extension GameScene: SKPhysicsContactDelegate {
         let a = contact.bodyA.categoryBitMask
         let b = contact.bodyB.categoryBitMask
 
+        // --- Web capture logic ---
+        let webInvolved = (a == PhysicsCategory.web || b == PhysicsCategory.web)
+        if webInvolved {
+            let emojiNode: SKNode?
+            let webNode: SKNode?
+
+            if a == PhysicsCategory.web {
+                webNode = contact.bodyA.node
+                emojiNode = contact.bodyB.node
+            } else {
+                webNode = contact.bodyB.node
+                emojiNode = contact.bodyA.node
+            }
+
+            if let emoji = emojiNode, let web = webNode {
+                captureInWeb(emoji, web: web)
+            }
+            return
+        }
+
+        // --- Coin-wall haptics ---
         let coinHitWall = (a == PhysicsCategory.coin && b == PhysicsCategory.wall) ||
                           (a == PhysicsCategory.wall && b == PhysicsCategory.coin)
 
