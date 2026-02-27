@@ -361,6 +361,9 @@ class GameScene: SKScene {
     /// Effect node wrapping only static jar visuals, rasterized for performance.
     private var jarEffectNode: SKEffectNode?
 
+    /// Individual dirt stain and smudge nodes scattered on the jar glass.
+    private var dirtNodes: [SKNode] = []
+
     /// Precompiled glass shader — avoid recompilation per frame.
     private let glassShader = SKShader(source: glassShaderSource)
     private let jarStrokeShader = SKShader(source: jarStrokeShaderSource)
@@ -808,6 +811,9 @@ class GameScene: SKScene {
 
         // Jar reflection shimmer particles
         addJarReflectionParticles()
+
+        // Dirt / smudge overlays (opacity controlled by EnergyManager.dirtLevel)
+        addJarDirtOverlays()
     }
 
     // MARK: - Jar Reflection Particles
@@ -852,6 +858,402 @@ class GameScene: SKScene {
         emitter.zPosition = -2
         emitter.name = "jarReflectionEmitter"
         addChild(emitter)
+    }
+
+    // MARK: - Jar Dirt Overlays
+
+    /// Called once from buildJar to set up initial dirt state.
+    private func addJarDirtOverlays() {
+        updateDirtOverlays()
+    }
+
+    /// Rebuild dirt overlays based on completed plays.
+    /// The first play of the day shows a clean jar — stains only appear after finishing a game.
+    /// Each completed play adds a new cluster of stains that accumulate in isolated spots.
+    func updateDirtOverlays() {
+        // Remove old dirt nodes
+        for node in dirtNodes { node.removeFromParent() }
+        dirtNodes.removeAll()
+
+        // Stains represent *completed* plays, so subtract the in-progress one.
+        // playsUsedToday is incremented at game start, so during the first play it's 1,
+        // but we want 0 stains until that play finishes.
+        let completedPlays = max(0, EnergyManager.shared.playsUsedToday - (viewModel?.gameState == .playing ? 1 : 0))
+        guard completedPlays > 0 else { return }
+
+        // Seeded RNG — deterministic positions for a given completed count.
+        var rng = DirtRNG(seed: UInt64(completedPlays &* 7919 &+ 42))
+
+        for playIndex in 1...completedPlays {
+            addStainBatch(playIndex: playIndex, rng: &rng)
+        }
+    }
+
+    /// Adds one batch of dirt marks for a single completed play.
+    /// Dirt concentrates around the neck/rim (where hands touch) and the bottom/corners
+    /// (where grime settles). The middle body stays mostly clean.
+    private func addStainBatch(playIndex: Int, rng: inout DirtRNG) {
+        let jarW = jarMaxX - jarMinX
+        let jarH = jarTopY - jarBottomY
+        let cx = (jarMinX + jarMaxX) / 2
+        // Neck zone: the narrow opening at the top where fingers grip
+        let neckW = jarW * 0.38
+        let neckTopY = jarTopY
+        let neckBottomY = jarTopY - jarH * 0.30
+
+        // --- Neck / rim stains (2-4 per play) — where hands grab the jar ---
+        let neckCount = 2 + rng.nextInt(bound: 3)
+        for _ in 0..<neckCount {
+            let x = cx + rng.nextCGFloat(in: -neckW * 0.55 ... neckW * 0.55)
+            let y = rng.nextCGFloat(in: neckBottomY ... neckTopY)
+            let w = rng.nextCGFloat(in: 22...46)
+            let h = rng.nextCGFloat(in: 16...34)
+
+            let smudge = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
+            smudge.position = CGPoint(x: x, y: y)
+            smudge.zPosition = 7
+            smudge.zRotation = rng.nextCGFloat(in: -0.8...0.8)
+            smudge.alpha = min(0.24 + CGFloat(playIndex) * 0.08, 0.58)
+            smudge.name = "dirtStain"
+            addChild(smudge)
+            dirtNodes.append(smudge)
+        }
+
+        // --- Rim grime spots around the lip (2-3 per play) ---
+        let rimSpotCount = 2 + rng.nextInt(bound: 2)
+        for _ in 0..<rimSpotCount {
+            let x = cx + rng.nextCGFloat(in: -neckW * 0.50 ... neckW * 0.50)
+            let y = neckTopY - rng.nextCGFloat(in: 0...18)
+            let r = rng.nextCGFloat(in: 4...9)
+
+            let spot = makeGrimeSpot(radius: r, rng: &rng)
+            spot.position = CGPoint(x: x, y: y)
+            spot.zPosition = 7
+            spot.alpha = min(0.28 + CGFloat(playIndex) * 0.07, 0.60)
+            spot.name = "dirtStain"
+            addChild(spot)
+            dirtNodes.append(spot)
+        }
+
+        // --- Bottom / corner dirt (grows each play) ---
+        addBottomDirt(playIndex: playIndex, rng: &rng)
+
+        // --- Rare mid-body stain: only ~20% chance, just 1 small mark ---
+        if rng.nextInt(bound: 10) < 2 {
+            let x = cx + rng.nextCGFloat(in: -jarW * 0.32 ... jarW * 0.32)
+            let y = jarBottomY + jarH * 0.25 + rng.nextCGFloat(in: 0 ... jarH * 0.35)
+            let r = rng.nextCGFloat(in: 4...8)
+
+            let spot = makeGrimeSpot(radius: r, rng: &rng)
+            spot.position = CGPoint(x: x, y: y)
+            spot.zPosition = 7
+            spot.alpha = min(0.18 + CGFloat(playIndex) * 0.06, 0.40)
+            spot.name = "dirtStain"
+            addChild(spot)
+            dirtNodes.append(spot)
+        }
+    }
+
+    /// Adds dirt buildup along the jar floor and into the lower corners.
+    private func addBottomDirt(playIndex: Int, rng: inout DirtRNG) {
+        let jarW = jarMaxX - jarMinX
+        let cx = (jarMinX + jarMaxX) / 2
+        let alpha = min(0.18 + CGFloat(playIndex) * 0.07, 0.52)
+
+        // Floor smudge — a wide, flat blotch along the bottom
+        let floorW = jarW * (0.22 + CGFloat(playIndex) * 0.09)
+        let floorH: CGFloat = 10 + CGFloat(playIndex) * 4
+        let floorDust = makeSmudgeBlotch(
+            size: CGSize(width: min(floorW, jarW * 0.65), height: floorH),
+            rng: &rng
+        )
+        floorDust.position = CGPoint(
+            x: cx + rng.nextCGFloat(in: -jarW * 0.06 ... jarW * 0.06),
+            y: jarBottomY + floorH * 0.5 + 8
+        )
+        floorDust.zPosition = 7
+        floorDust.alpha = alpha + 0.08
+        floorDust.name = "dirtStain"
+        addChild(floorDust)
+        dirtNodes.append(floorDust)
+
+        // Left corner — blotch + spots
+        let leftBlotch = makeSmudgeBlotch(
+            size: CGSize(width: rng.nextCGFloat(in: 18...30), height: rng.nextCGFloat(in: 14...24)),
+            rng: &rng
+        )
+        leftBlotch.position = CGPoint(
+            x: jarMinX + rng.nextCGFloat(in: 18...42),
+            y: jarBottomY + rng.nextCGFloat(in: 14...36)
+        )
+        leftBlotch.zPosition = 7
+        leftBlotch.zRotation = rng.nextCGFloat(in: -0.5...0.5)
+        leftBlotch.alpha = alpha + 0.06
+        leftBlotch.name = "dirtStain"
+        addChild(leftBlotch)
+        dirtNodes.append(leftBlotch)
+
+        let leftSpotCount = 1 + rng.nextInt(bound: 2)
+        for _ in 0..<leftSpotCount {
+            let r = rng.nextCGFloat(in: 4...10)
+            let spot = makeGrimeSpot(radius: r, rng: &rng)
+            spot.position = CGPoint(
+                x: jarMinX + rng.nextCGFloat(in: 10...48),
+                y: jarBottomY + rng.nextCGFloat(in: 8...40)
+            )
+            spot.zPosition = 7
+            spot.alpha = alpha + 0.05
+            spot.name = "dirtStain"
+            addChild(spot)
+            dirtNodes.append(spot)
+        }
+
+        // Right corner — blotch + spots
+        let rightBlotch = makeSmudgeBlotch(
+            size: CGSize(width: rng.nextCGFloat(in: 18...30), height: rng.nextCGFloat(in: 14...24)),
+            rng: &rng
+        )
+        rightBlotch.position = CGPoint(
+            x: jarMaxX - rng.nextCGFloat(in: 18...42),
+            y: jarBottomY + rng.nextCGFloat(in: 14...36)
+        )
+        rightBlotch.zPosition = 7
+        rightBlotch.zRotation = rng.nextCGFloat(in: -0.5...0.5)
+        rightBlotch.alpha = alpha + 0.06
+        rightBlotch.name = "dirtStain"
+        addChild(rightBlotch)
+        dirtNodes.append(rightBlotch)
+
+        let rightSpotCount = 1 + rng.nextInt(bound: 2)
+        for _ in 0..<rightSpotCount {
+            let r = rng.nextCGFloat(in: 4...10)
+            let spot = makeGrimeSpot(radius: r, rng: &rng)
+            spot.position = CGPoint(
+                x: jarMaxX - rng.nextCGFloat(in: 10...48),
+                y: jarBottomY + rng.nextCGFloat(in: 8...40)
+            )
+            spot.zPosition = 7
+            spot.alpha = alpha + 0.05
+            spot.name = "dirtStain"
+            addChild(spot)
+            dirtNodes.append(spot)
+        }
+    }
+
+    // MARK: Dirt Sprite Factories
+
+    /// Flat opaque smudge blotch — like a thumbprint on glass. No arcs, no glow.
+    /// Uses an irregular filled shape with slight transparency variation.
+    private func makeSmudgeBlotch(size: CGSize, rng: inout DirtRNG) -> SKSpriteNode {
+        let pw = max(Int(size.width * 2), 8)
+        let ph = max(Int(size.height * 2), 8)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil, width: pw, height: ph,
+            bitsPerComponent: 8, bytesPerRow: pw * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKSpriteNode() }
+
+        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pw, height: ph)))
+
+        let cx = CGFloat(pw) / 2
+        let cy = CGFloat(ph) / 2
+        let rx = CGFloat(pw) * 0.42
+        let ry = CGFloat(ph) * 0.42
+
+        // Build an irregular blob path using perturbed ellipse points
+        let pointCount = 10
+        let blobPath = CGMutablePath()
+        var points: [CGPoint] = []
+        for i in 0..<pointCount {
+            let angle = (CGFloat(i) / CGFloat(pointCount)) * .pi * 2
+            let wobble = rng.nextCGFloat(in: 0.70...1.0)
+            let px = cx + cos(angle) * rx * wobble
+            let py = cy + sin(angle) * ry * wobble
+            points.append(CGPoint(x: px, y: py))
+        }
+        blobPath.move(to: points[0])
+        for i in 1..<points.count {
+            let prev = points[i - 1]
+            let curr = points[i]
+            let mpx = (prev.x + curr.x) / 2
+            let mpy = (prev.y + curr.y) / 2
+            blobPath.addQuadCurve(to: CGPoint(x: mpx, y: mpy), control: prev)
+        }
+        let last = points.last!
+        let first = points[0]
+        blobPath.addQuadCurve(to: first, control: last)
+        blobPath.closeSubpath()
+
+        // Fill with a dirty brownish color
+        let r = rng.nextCGFloat(in: 0.38...0.50)
+        let g = rng.nextCGFloat(in: 0.32...0.42)
+        let b = rng.nextCGFloat(in: 0.22...0.30)
+        ctx.setFillColor(CGColor(red: r, green: g, blue: b, alpha: 0.60))
+        ctx.addPath(blobPath)
+        ctx.fillPath()
+
+        // Add a slightly different inner blob for texture variation
+        let innerPath = CGMutablePath()
+        var innerPts: [CGPoint] = []
+        for i in 0..<8 {
+            let angle = (CGFloat(i) / 8.0) * .pi * 2 + rng.nextCGFloat(in: -0.3...0.3)
+            let wobble = rng.nextCGFloat(in: 0.30...0.55)
+            let px = cx + cos(angle) * rx * wobble
+            let py = cy + sin(angle) * ry * wobble
+            innerPts.append(CGPoint(x: px, y: py))
+        }
+        innerPath.move(to: innerPts[0])
+        for i in 1..<innerPts.count {
+            innerPath.addLine(to: innerPts[i])
+        }
+        innerPath.closeSubpath()
+        ctx.setFillColor(CGColor(red: r * 0.85, green: g * 0.85, blue: b * 0.85, alpha: 0.35))
+        ctx.addPath(innerPath)
+        ctx.fillPath()
+
+        guard let image = ctx.makeImage() else { return SKSpriteNode() }
+        let tex = SKTexture(cgImage: image)
+        let sprite = SKSpriteNode(texture: tex, size: size)
+        sprite.blendMode = .alpha
+        return sprite
+    }
+
+    /// A short smear mark — like a finger dragged across dirty glass.
+    private func makeSmearMark(rng: inout DirtRNG) -> SKSpriteNode {
+        let length = rng.nextCGFloat(in: 35...70)
+        let thickness = rng.nextCGFloat(in: 8...18)
+        let pw = max(Int(length * 2), 8)
+        let ph = max(Int(thickness * 4), 8)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil, width: pw, height: ph,
+            bitsPerComponent: 8, bytesPerRow: pw * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKSpriteNode() }
+
+        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pw, height: ph)))
+
+        let midY = CGFloat(ph) / 2
+        let startX = CGFloat(pw) * 0.08
+        let endX = CGFloat(pw) * 0.92
+
+        // Dirty brownish color
+        let r = rng.nextCGFloat(in: 0.40...0.52)
+        let g = rng.nextCGFloat(in: 0.34...0.44)
+        let b = rng.nextCGFloat(in: 0.24...0.32)
+
+        // Draw 2-3 overlapping thick strokes for a smeared look
+        let strokeCount = 2 + rng.nextInt(bound: 2)
+        for s in 0..<strokeCount {
+            let yOff = rng.nextCGFloat(in: -thickness * 0.4 ... thickness * 0.4)
+            let lw = thickness * rng.nextCGFloat(in: 0.6...1.0)
+            let alpha = rng.nextCGFloat(in: 0.30...0.55)
+
+            ctx.setStrokeColor(CGColor(red: r, green: g, blue: b, alpha: alpha))
+            ctx.setLineWidth(lw)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: startX, y: midY + yOff))
+
+            let segs = 3 + rng.nextInt(bound: 3)
+            let segW = (endX - startX) / CGFloat(segs)
+            for i in 1...segs {
+                let px = startX + segW * CGFloat(i)
+                let py = midY + yOff + rng.nextCGFloat(in: -lw * 0.5 ... lw * 0.5)
+                path.addLine(to: CGPoint(x: px, y: py))
+            }
+            ctx.addPath(path)
+            ctx.strokePath()
+
+            _ = s  // silence unused warning
+        }
+
+        guard let image = ctx.makeImage() else { return SKSpriteNode() }
+        let tex = SKTexture(cgImage: image)
+        let displaySize = CGSize(width: length, height: thickness * 2)
+        let sprite = SKSpriteNode(texture: tex, size: displaySize)
+        sprite.blendMode = .alpha
+        return sprite
+    }
+
+    /// Small grime spot — an opaque irregular dot like dried residue on glass.
+    private func makeGrimeSpot(radius: CGFloat, rng: inout DirtRNG) -> SKSpriteNode {
+        let pixSize = max(Int(radius * 4), 6)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil, width: pixSize, height: pixSize,
+            bitsPerComponent: 8, bytesPerRow: pixSize * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKSpriteNode() }
+
+        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pixSize, height: pixSize)))
+
+        let center = CGPoint(x: CGFloat(pixSize) / 2, y: CGFloat(pixSize) / 2)
+        let r = CGFloat(pixSize) * 0.44
+
+        // Irregular polygon shape
+        let sides = 5 + rng.nextInt(bound: 4)
+        let path = CGMutablePath()
+        for i in 0..<sides {
+            let angle = (CGFloat(i) / CGFloat(sides)) * .pi * 2
+            let wobble = rng.nextCGFloat(in: 0.65...1.0)
+            let px = center.x + cos(angle) * r * wobble
+            let py = center.y + sin(angle) * r * wobble
+            if i == 0 { path.move(to: CGPoint(x: px, y: py)) }
+            else { path.addLine(to: CGPoint(x: px, y: py)) }
+        }
+        path.closeSubpath()
+
+        let red = rng.nextCGFloat(in: 0.36...0.48)
+        let green = rng.nextCGFloat(in: 0.30...0.40)
+        let blue = rng.nextCGFloat(in: 0.20...0.28)
+        ctx.setFillColor(CGColor(red: red, green: green, blue: blue, alpha: 0.70))
+        ctx.addPath(path)
+        ctx.fillPath()
+
+        guard let image = ctx.makeImage() else { return SKSpriteNode() }
+        let tex = SKTexture(cgImage: image)
+        let displaySize = CGSize(width: radius * 2, height: radius * 2)
+        let sprite = SKSpriteNode(texture: tex, size: displaySize)
+        sprite.blendMode = .alpha
+        return sprite
+    }
+
+    /// Simple seeded RNG for deterministic dirt placement per play count.
+    private struct DirtRNG {
+        private var state: UInt64
+
+        init(seed: UInt64) { state = seed == 0 ? 1 : seed }
+
+        mutating func next() -> UInt64 {
+            state ^= state &<< 13
+            state ^= state &>> 7
+            state ^= state &<< 17
+            return state
+        }
+
+        mutating func nextDouble() -> Double {
+            return Double(next() % 1_000_000) / 1_000_000.0
+        }
+
+        mutating func nextCGFloat(in range: ClosedRange<CGFloat>) -> CGFloat {
+            let t = CGFloat(nextDouble())
+            return range.lowerBound + t * (range.upperBound - range.lowerBound)
+        }
+
+        mutating func nextInt(bound: Int) -> Int {
+            guard bound > 0 else { return 0 }
+            return Int(next() % UInt64(bound))
+        }
     }
 
     // MARK: - Emoji Texture Rendering

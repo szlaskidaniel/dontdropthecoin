@@ -10,6 +10,7 @@ enum GameState {
     case menu
     case playing
     case gameOver
+    case dailyLimitReached
 }
 
 class GameViewModel: ObservableObject {
@@ -54,13 +55,37 @@ class GameViewModel: ObservableObject {
     /// Points awarded per tick during the score tally animation.
     private var tallyPointsPerTick: Int = 0
 
+    /// Reference to the shared energy manager for daily play tracking.
+    let energy = EnergyManager.shared
+
     init() {
         self.highScore = UserDefaults.standard.integer(forKey: "highScore")
     }
 
-    func startGame() {
+    /// Attempt to start a game. Returns `true` if the game was started,
+    /// or `false` if the daily limit was reached (shows limit screen instead).
+    @discardableResult
+    func startGame() -> Bool {
+        energy.refreshIfNewDay()
+        guard !energy.isLimitReached else {
+            gameState = .dailyLimitReached
+            return false
+        }
+        energy.consumePlay()
         reset()
         gameState = .playing
+        return true
+    }
+
+    /// Called when the user purchases "Clean the Jar" or watches a rewarded ad.
+    func cleanJar() {
+        energy.cleanJar()
+        gameState = .menu
+    }
+
+    /// Show the daily limit screen (e.g. when user tries to play from game over).
+    func showDailyLimit() {
+        gameState = .dailyLimitReached
     }
 
     private var currentStageDuration: Int {

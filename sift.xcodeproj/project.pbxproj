@@ -17,6 +17,7 @@
 				Actions.sks,
 				Assets.xcassets,
 				ContentView.swift,
+				EnergyManager.swift,
 				GameScene.sks,
 				GameScene.swift,
 				GameViewModel.swift,
