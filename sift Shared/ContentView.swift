@@ -5,6 +5,9 @@
 
 import SwiftUI
 import SpriteKit
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Root View
 
@@ -18,14 +21,19 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .top) {
             // ── Game canvas ──────────────────────────────────────────
-            SpriteView(scene: scene, options: [.shouldCullNonVisibleNodes, .allowsTransparency])
+            SpriteView(
+                scene: scene,
+                options: [.shouldCullNonVisibleNodes, .allowsTransparency]
+            )
                 .ignoresSafeArea()
                 .onAppear {
                     scene.viewModel = viewModel
                     // Request 120Hz ProMotion refresh rate
                     if let skView = scene.view {
-                        skView.preferredFramesPerSecond = 120
+                        let maxFPS = skView.window?.windowScene?.screen.maximumFramesPerSecond ?? 60
+                        skView.preferredFramesPerSecond = min(120, maxFPS)
                         skView.ignoresSiblingOrder = true
+                        skView.showsFPS = false
                     }
                 }
 
@@ -64,9 +72,9 @@ struct GameHUD: View {
                 // Left: stage
                 HStack(spacing: 4) {
                     Text("🏁")
-                        .font(.system(size: 14))
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
                     Text("\(viewModel.stage)")
-                        .font(.system(.callout, design: .rounded, weight: .heavy))
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
                         .animation(.spring(duration: 0.3), value: viewModel.stage)
@@ -104,7 +112,7 @@ struct GameHUD: View {
                         .fill(Color.white.opacity(0.08))
                         .frame(height: 6)
 
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -119,6 +127,7 @@ struct GameHUD: View {
                             width: geo.size.width * viewModel.junkProgress,
                             height: 6
                         )
+                        .cornerRadius(3)
                         .animation(.spring(duration: 0.3), value: viewModel.junkProgress)
                 }
             }

@@ -251,7 +251,11 @@ class GameScene: SKScene {
         backgroundColor = .black
 
         view.ignoresSiblingOrder = true
-        view.showsFPS = true
+        #if os(iOS)
+        let maxFPS = view.window?.windowScene?.screen.maximumFramesPerSecond ?? 60
+        view.preferredFramesPerSecond = min(120, maxFPS)
+        #endif
+        view.showsFPS = false
         view.showsNodeCount = true
 
         #if os(iOS)
@@ -456,6 +460,7 @@ class GameScene: SKScene {
         innerFill.strokeColor = .clear
         innerFill.fillColor   = SKColor(red: 0.4, green: 0.5, blue: 0.8, alpha: 0.04)
         innerFill.lineJoin    = .round
+        innerFill.isAntialiased = true
         innerFill.zPosition   = 0
         jarVisualRoot.addChild(innerFill)
 
@@ -482,6 +487,7 @@ class GameScene: SKScene {
         outline.fillColor   = .clear
         outline.strokeShader = jarStrokeShader
         outline.glowWidth   = 2.5
+        outline.isAntialiased = true
         outline.zPosition   = 1
         jarVisualRoot.addChild(outline)
 
@@ -504,6 +510,7 @@ class GameScene: SKScene {
         highlight.lineJoin    = .round
         highlight.fillColor   = .clear
         highlight.glowWidth   = 1.0
+        highlight.isAntialiased = true
         highlight.zPosition   = 3
         jarVisualRoot.addChild(highlight)
 
@@ -1134,21 +1141,48 @@ class GameScene: SKScene {
     }
 
     private func showGameOverEffect() {
+        let center = CGPoint(x: frame.midX, y: frame.midY + 120)
+
+        let glow = SKLabelNode(text: "Game Over")
+        glow.name       = "banner"
+        glow.fontName   = "SFProRounded-Heavy"
+        glow.fontSize   = 62
+        glow.fontColor  = SKColor(red: 1.0, green: 0.26, blue: 0.22, alpha: 0.35)
+        glow.position   = center
+        glow.zPosition  = 19
+        glow.alpha      = 0
+        glow.setScale(0.5)
+        addChild(glow)
+
+        let shadow = SKLabelNode(text: "Game Over")
+        shadow.name       = "banner"
+        shadow.fontName   = "SFProRounded-Heavy"
+        shadow.fontSize   = 60
+        shadow.fontColor  = SKColor(white: 0.0, alpha: 0.55)
+        shadow.position   = CGPoint(x: center.x, y: center.y - 4)
+        shadow.zPosition  = 19.5
+        shadow.alpha      = 0
+        shadow.setScale(0.5)
+        addChild(shadow)
+
         let banner = SKLabelNode(text: "Game Over")
         banner.name       = "banner"
         banner.fontName   = "SFProRounded-Heavy"
-        banner.fontSize   = 48
+        banner.fontSize   = 60
         banner.fontColor  = SKColor(red: 1, green: 0.3, blue: 0.25, alpha: 1)
-        banner.position   = CGPoint(x: frame.midX, y: frame.midY + 120)
+        banner.position   = center
         banner.zPosition  = 20
         banner.alpha      = 0
         banner.setScale(0.5)
         addChild(banner)
 
-        banner.run(.group([
+        let reveal = SKAction.group([
             .fadeIn(withDuration: 0.4),
             .scale(to: 1.0, duration: 0.4)
-        ]))
+        ])
+        glow.run(reveal)
+        shadow.run(reveal)
+        banner.run(reveal)
 
         #if os(iOS)
         UINotificationFeedbackGenerator().notificationOccurred(.error)
