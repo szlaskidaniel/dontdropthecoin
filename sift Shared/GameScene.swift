@@ -672,31 +672,27 @@ class GameScene: SKScene {
     // MARK: - Fill Jar
 
     private func fillJar() {
+        let coinBagCount = 5
         let coinCount    = 5
         let junkCount    = 12
         let balloonCount = 3
+        let totalCoins   = 5
         let jarW = jarMaxX - jarMinX
         let cx   = frame.midX
 
-        // Spawn coins (heavy, settle at the bottom)
-        for _ in 0..<coinCount {
-            let x = CGFloat.random(in: (cx - jarW * 0.25)...(cx + jarW * 0.25))
-            let y = CGFloat.random(in: jarBottomY + 40 ... jarBottomY + 140)
-            placeEmoji(type: .randomCoin(), at: CGPoint(x: x, y: y))
-        }
+        // Build a shuffled list of all item types so positions are fully random
+        var items: [EmojiType] = []
+        items += Array(repeating: EmojiType.coinBag, count: coinBagCount)
+        items += Array(repeating: EmojiType.coin, count: coinCount)
+        for _ in 0..<junkCount { items.append(.randomJunk()) }
+        items += Array(repeating: EmojiType.balloon, count: balloonCount)
+        items.shuffle()
 
-        // Spawn junk (light, scattered throughout)
-        for _ in 0..<junkCount {
+        // Place all items at random positions throughout the jar
+        for type in items {
             let x = CGFloat.random(in: (cx - jarW * 0.30)...(cx + jarW * 0.30))
-            let y = CGFloat.random(in: jarBottomY + 40 ... jarBottomY + 260)
-            placeEmoji(type: .randomJunk(), at: CGPoint(x: x, y: y))
-        }
-
-        // Spawn balloons (float toward the top, block the neck)
-        for _ in 0..<balloonCount {
-            let x = CGFloat.random(in: (cx - jarW * 0.20)...(cx + jarW * 0.20))
-            let y = CGFloat.random(in: jarBottomY + 180 ... jarBottomY + 300)
-            placeEmoji(type: .balloon, at: CGPoint(x: x, y: y))
+            let y = CGFloat.random(in: jarBottomY + 40 ... jarBottomY + 300)
+            placeEmoji(type: type, at: CGPoint(x: x, y: y))
         }
 
         // Spawn sticky webs (obstacle zones) — only from stage 10 onward
@@ -709,7 +705,7 @@ class GameScene: SKScene {
             }
         }
 
-        viewModel?.setItemCounts(coins: coinCount, junk: junkCount + balloonCount)
+        viewModel?.setItemCounts(coins: totalCoins, junk: junkCount + balloonCount)
     }
 
     /// The current stage number (forwarded from the view model for difficulty scaling).
