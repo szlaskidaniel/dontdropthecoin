@@ -50,8 +50,10 @@ class GameViewModel: ObservableObject {
     /// True while the time→score tally animation is running.
     @Published var isTallying: Bool = false
 
-    private let earlyStageDuration = 120
-    private let laterStageDuration = 60
+    private let baseStageDuration = 120
+    private let unchangedStageCount = 3
+    private let stageDurationReductionPerStage = 3
+    private let minimumStageDuration = 30
     private var timer: Timer?
     private var tallyTimer: Timer?
     /// Points awarded per tick during the score tally animation.
@@ -100,7 +102,10 @@ class GameViewModel: ObservableObject {
     }
 
     private var currentStageDuration: Int {
-        stage <= 5 ? earlyStageDuration : laterStageDuration
+        guard stage > unchangedStageCount else { return baseStageDuration }
+        let reductions = stage - unchangedStageCount
+        let reducedDuration = baseStageDuration - (reductions * stageDurationReductionPerStage)
+        return max(minimumStageDuration, reducedDuration)
     }
 
     func setItemCounts(crystals: Int, junk: Int) {
