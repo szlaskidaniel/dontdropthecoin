@@ -144,6 +144,9 @@ class GameScene: SKScene {
     private var jarMaxX: CGFloat = 0
     private var jarBottomY: CGFloat = 0
     private var jarTopY: CGFloat = 0
+    private var jarPath: CGMutablePath?
+
+
 
     private var stageWon = false
     private var gameOver = false
@@ -169,7 +172,7 @@ class GameScene: SKScene {
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
-        backgroundColor = SKColor(red: 0.07, green: 0.07, blue: 0.14, alpha: 1)
+        backgroundColor = .black
         physicsWorld.gravity = CGVector(dx: 0, dy: -gravityStrength)
         physicsWorld.speed = 1.0
         physicsWorld.contactDelegate = self
@@ -178,7 +181,19 @@ class GameScene: SKScene {
         coinImpactGenerator.prepare()
         #endif
 
+        // Radial gradient background (deep navy → dark purple)
+        let bgNode = SKSpriteNode(texture: makeRadialGradientTexture(
+            size: self.size,
+            innerColor: SKColor(red: 0.06, green: 0.06, blue: 0.18, alpha: 1),
+            outerColor: SKColor(red: 0.10, green: 0.03, blue: 0.14, alpha: 1)
+        ))
+        bgNode.position  = CGPoint(x: frame.midX, y: frame.midY)
+        bgNode.zPosition = -10
+        bgNode.name      = "background"
+        addChild(bgNode)
+
         buildJar()
+
         fillJar()
         startMotion()
     }
@@ -208,40 +223,233 @@ class GameScene: SKScene {
         let neckMinX  = cx - neckW / 2
         let neckMaxX  = cx + neckW / 2
 
-        // Build the jar physics as an edge-chain (open top, bottle shape)
-        let jarPath = CGMutablePath()
-        // Left side: straight neck → shoulder → body → floor → body → shoulder → straight neck (right)
-        jarPath.move(to:    CGPoint(x: neckMinX, y: jarTopY))       // left opening edge
-        jarPath.addLine(to: CGPoint(x: neckMinX, y: shoulderY))    // left neck straight down
-        jarPath.addLine(to: CGPoint(x: jarMinX,  y: shoulderY))    // left shoulder outward
-        jarPath.addLine(to: CGPoint(x: jarMinX,  y: by))           // left wall down
-        jarPath.addLine(to: CGPoint(x: jarMaxX,  y: by))           // floor
-        jarPath.addLine(to: CGPoint(x: jarMaxX,  y: shoulderY))    // right wall up
-        jarPath.addLine(to: CGPoint(x: neckMaxX, y: shoulderY))    // right shoulder inward
-        jarPath.addLine(to: CGPoint(x: neckMaxX, y: jarTopY))      // right neck straight up
+        // Corner radius for the bottom of the body
+        let bodyCornerR: CGFloat = 28
 
+        // Build the jar as a smooth bottle-shaped edge-chain (open top).
+        // The shoulder is a smooth S-curve from the narrow neck to the wide body,
+        // NOT a horizontal shelf. This gives a proper bottle/jar silhouette.
+        let path = CGMutablePath()
+
+        // Start at left neck opening
+        path.move(to: CGPoint(x: neckMinX, y: jarTopY))
+
+        // Left side: smooth S-curve from neck down to body
+        // Control points pull the curve diagonally — first hugging the neck,
+        // then sweeping out to the body width.
+        path.addCurve(
+            to: CGPoint(x: jarMinX, y: shoulderY - 30),
+            control1: CGPoint(x: neckMinX, y: shoulderY + 20),
+            control2: CGPoint(x: jarMinX, y: shoulderY + 10)
+        )
+
+        // Left body wall straight down to bottom-left corner
+        path.addLine(to: CGPoint(x: jarMinX, y: by + bodyCornerR))
+
+        // Bottom-left rounded corner
+        path.addQuadCurve(
+            to: CGPoint(x: jarMinX + bodyCornerR, y: by),
+            control: CGPoint(x: jarMinX, y: by)
+        )
+
+        // Floor
+        path.addLine(to: CGPoint(x: jarMaxX - bodyCornerR, y: by))
+
+        // Bottom-right rounded corner
+        path.addQuadCurve(
+            to: CGPoint(x: jarMaxX, y: by + bodyCornerR),
+            control: CGPoint(x: jarMaxX, y: by)
+        )
+
+        // Right body wall straight up to shoulder region
+        path.addLine(to: CGPoint(x: jarMaxX, y: shoulderY - 30))
+
+        // Right side: smooth S-curve from body up to neck
+        path.addCurve(
+            to: CGPoint(x: neckMaxX, y: jarTopY),
+            control1: CGPoint(x: jarMaxX, y: shoulderY + 10),
+            control2: CGPoint(x: neckMaxX, y: shoulderY + 20)
+        )
+
+        jarPath = path
+
+        // Physics body
         let jarNode = SKNode()
         jarNode.name = "wall"
-        let body = SKPhysicsBody(edgeChainFrom: jarPath)
+        let body = SKPhysicsBody(edgeChainFrom: path)
         body.isDynamic          = false
         body.friction           = 0.40
         body.restitution        = 0.30
         body.categoryBitMask    = PhysicsCategory.wall
         body.collisionBitMask   = PhysicsCategory.allEmoji
-        body.contactTestBitMask = PhysicsCategory.coin
+        body.contactTestBitMask = PhysicsCategory.allEmoji
         jarNode.physicsBody = body
         addChild(jarNode)
 
-        // Visual outline
-        let outline = SKShapeNode(path: jarPath)
-        outline.name        = "jarOutline"
-        outline.strokeColor = SKColor(white: 1, alpha: 0.22)
-        outline.lineWidth   = 4
+        // --- Layer 1: Inner fill (depth tint) ---
+        let innerFill = SKShapeNode(path: path)
+        innerFill.name        = "jarLayer"
+        innerFill.strokeColor = .clear
+        innerFill.fillColor   = SKColor(red: 0.4, green: 0.5, blue: 0.8, alpha: 0.04)
+        innerFill.lineJoin    = .round
+        innerFill.zPosition   = -3
+        addChild(innerFill)
+
+        // --- Layer 2: Main glass outline ---
+        let outline = SKShapeNode(path: path)
+        outline.name        = "jarLayer"
+        outline.strokeColor = SKColor(white: 1, alpha: 0.18)
+        outline.lineWidth   = 3.5
         outline.lineCap     = .round
-        outline.fillColor   = SKColor(white: 1, alpha: 0.03)
-        outline.glowWidth   = 1.5
+        outline.lineJoin    = .round
+        outline.fillColor   = SKColor(white: 1, alpha: 0.025)
+        outline.glowWidth   = 2.0
         outline.zPosition   = -1
         addChild(outline)
+
+        // --- Layer 3: Left-side highlight (light reflection) ---
+        let hlPath = CGMutablePath()
+        let hlOff: CGFloat = 3  // inset from the main outline
+        hlPath.move(to: CGPoint(x: neckMinX + hlOff, y: jarTopY))
+        hlPath.addCurve(
+            to: CGPoint(x: jarMinX + hlOff, y: shoulderY - 30),
+            control1: CGPoint(x: neckMinX + hlOff, y: shoulderY + 20),
+            control2: CGPoint(x: jarMinX + hlOff, y: shoulderY + 10)
+        )
+        hlPath.addLine(to: CGPoint(x: jarMinX + hlOff, y: by + bodyCornerR))
+
+        let highlight = SKShapeNode(path: hlPath)
+        highlight.name        = "jarLayer"
+        highlight.strokeColor = SKColor(white: 1, alpha: 0.12)
+        highlight.lineWidth   = 1.5
+        highlight.lineCap     = .round
+        highlight.lineJoin    = .round
+        highlight.fillColor   = .clear
+        highlight.glowWidth   = 0.8
+        highlight.zPosition   = -0.5
+        addChild(highlight)
+
+        // Jar reflection shimmer particles
+        addJarReflectionParticles()
+    }
+
+    // MARK: - Jar Reflection Particles
+
+    private func addJarReflectionParticles() {
+        let emitter = SKEmitterNode()
+        emitter.particleTexture = makeCircleTexture(radius: 4)
+
+        emitter.particleBirthRate       = 1.5
+        emitter.numParticlesToEmit      = 0     // infinite
+        emitter.particleLifetime        = 6.0
+        emitter.particleLifetimeRange   = 3.0
+
+        emitter.particlePositionRange   = CGVector(
+            dx: jarMaxX - jarMinX - 20,
+            dy: jarTopY - jarBottomY - 40
+        )
+
+        emitter.particleSpeed           = 4.0
+        emitter.particleSpeedRange      = 2.0
+        emitter.emissionAngle           = .pi / 2
+        emitter.emissionAngleRange      = .pi / 4
+
+        emitter.particleAlpha           = 0.0
+        emitter.particleAlphaSequence   = SKKeyframeSequence(
+            keyframeValues: [NSNumber(value: 0),
+                             NSNumber(value: 0.15),
+                             NSNumber(value: 0.15),
+                             NSNumber(value: 0)],
+            times: [0, 0.2, 0.8, 1.0]
+        )
+
+        emitter.particleScale           = 0.4
+        emitter.particleScaleRange      = 0.3
+        emitter.particleColor           = .white
+        emitter.particleColorBlendFactor = 1.0
+
+        emitter.position = CGPoint(
+            x: frame.midX,
+            y: jarBottomY + (jarTopY - jarBottomY) / 2
+        )
+        emitter.zPosition = -2
+        emitter.name = "jarReflectionEmitter"
+        addChild(emitter)
+    }
+
+    /// Creates a small white circle texture for particle emitters (cross-platform).
+    private func makeCircleTexture(radius: CGFloat) -> SKTexture {
+        let diameter = radius * 2
+        let size = CGSize(width: diameter, height: diameter)
+
+        #if os(iOS)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+        }
+        return SKTexture(image: image)
+        #else
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: rect).fill()
+            return true
+        }
+        return SKTexture(image: image)
+        #endif
+    }
+
+    // MARK: - Radial Gradient Background
+
+    private func makeRadialGradientTexture(
+        size: CGSize,
+        innerColor: SKColor,
+        outerColor: SKColor
+    ) -> SKTexture {
+        let w = Int(size.width)
+        let h = Int(size.height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: w * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKTexture() }
+
+        let center = CGPoint(x: CGFloat(w) / 2, y: CGFloat(h) * 0.55)
+        let radius = max(CGFloat(w), CGFloat(h)) * 0.7
+
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+
+        #if os(iOS)
+        innerColor.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        outerColor.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #else
+        let ic = innerColor.usingColorSpace(.deviceRGB) ?? innerColor
+        let oc = outerColor.usingColorSpace(.deviceRGB) ?? outerColor
+        ic.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        oc.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #endif
+
+        let colors = [r1, g1, b1, a1, r2, g2, b2, a2] as [CGFloat]
+        guard let gradient = CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: colors,
+            locations: [0.0, 1.0],
+            count: 2
+        ) else { return SKTexture() }
+
+        ctx.drawRadialGradient(
+            gradient,
+            startCenter: center, startRadius: 0,
+            endCenter: center, endRadius: radius,
+            options: [.drawsAfterEndLocation]
+        )
+
+        guard let image = ctx.makeImage() else { return SKTexture() }
+        return SKTexture(cgImage: image)
     }
 
     // MARK: - Fill Jar
@@ -304,8 +512,8 @@ class GameScene: SKScene {
         body.density           = type.density
         body.restitution       = type.restitution
         body.friction          = type.friction
-        body.linearDamping     = type.isBalloon ? 1.5 : 0.3
-        body.angularDamping    = 0.4
+        body.linearDamping     = type.isBalloon ? 2.0 : 0.8
+        body.angularDamping    = type.isBalloon ? 0.6 : 0.7
         body.allowsRotation    = !type.isBalloon  // keep balloons upright
         body.affectedByGravity = !type.isBalloon  // balloons ignore gravity
         body.categoryBitMask   = type.physicsCategory
@@ -320,6 +528,32 @@ class GameScene: SKScene {
 
         label.physicsBody = body
         addChild(label)
+
+        // Pulsing glow behind coin emojis
+        if type.isCoin {
+            let glowRadius = type.radius + 8
+            let glow = SKShapeNode(circleOfRadius: glowRadius)
+            glow.name        = "coinGlow"
+            glow.fillColor   = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.15)
+            glow.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.08)
+            glow.lineWidth   = 2
+            glow.glowWidth   = 6
+            glow.zPosition   = -0.1
+            glow.position    = .zero
+
+            let pulse = SKAction.sequence([
+                .group([
+                    .scale(to: 1.15, duration: 0.8),
+                    .fadeAlpha(to: 0.25, duration: 0.8)
+                ]),
+                .group([
+                    .scale(to: 0.9, duration: 0.8),
+                    .fadeAlpha(to: 0.10, duration: 0.8)
+                ])
+            ])
+            glow.run(.repeatForever(pulse))
+            label.addChild(glow)
+        }
     }
 
     // MARK: - Sticky Web
@@ -406,7 +640,7 @@ class GameScene: SKScene {
             // Re-enable gravity (unless it's a balloon)
             let isBalloon = node.name == "balloon"
             pb.affectedByGravity = !isBalloon
-            pb.linearDamping = isBalloon ? 1.5 : 0.3
+            pb.linearDamping = isBalloon ? 2.0 : 0.8
 
             // Small random pop impulse
             let ix = CGFloat.random(in: -30...30)
@@ -625,7 +859,7 @@ class GameScene: SKScene {
         // Victory banner
         let banner = SKLabelNode(text: "Stage Clear!")
         banner.name       = "banner"
-        banner.fontName   = "AvenirNext-Bold"
+        banner.fontName   = "SFProRounded-Heavy"
         banner.fontSize   = 44
         banner.fontColor  = SKColor(red: 1, green: 0.85, blue: 0.1, alpha: 1)
         banner.position   = CGPoint(x: frame.midX, y: frame.midY + 150)
@@ -644,7 +878,7 @@ class GameScene: SKScene {
             let multiplierText = String(format: "×%.1f", vm.lastMultiplier)
             let multLabel = SKLabelNode(text: multiplierText)
             multLabel.name       = "banner"
-            multLabel.fontName   = "AvenirNext-DemiBold"
+            multLabel.fontName   = "SFProRounded-Bold"
             multLabel.fontSize   = 22
             multLabel.fontColor  = SKColor(white: 1, alpha: 0.7)
             multLabel.position   = CGPoint(x: frame.midX, y: frame.midY + 110)
@@ -675,7 +909,7 @@ class GameScene: SKScene {
     private func showGameOverEffect() {
         let banner = SKLabelNode(text: "Game Over")
         banner.name       = "banner"
-        banner.fontName   = "AvenirNext-Bold"
+        banner.fontName   = "SFProRounded-Heavy"
         banner.fontSize   = 48
         banner.fontColor  = SKColor(red: 1, green: 0.3, blue: 0.25, alpha: 1)
         banner.position   = CGPoint(x: frame.midX, y: frame.midY + 120)
@@ -770,7 +1004,7 @@ extension GameScene: SKPhysicsContactDelegate {
             return
         }
 
-        // --- Coin-wall haptics ---
+        // --- Coin-wall haptics (.heavy) ---
         let coinHitWall = (a == PhysicsCategory.coin && b == PhysicsCategory.wall) ||
                           (a == PhysicsCategory.wall && b == PhysicsCategory.coin)
 
@@ -778,7 +1012,6 @@ extension GameScene: SKPhysicsContactDelegate {
             let impulse = contact.collisionImpulse
             let now = CACurrentMediaTime()
             #if os(iOS)
-            // Only fire haptic for meaningful impacts, with a cooldown
             if impulse > 3.0, now - lastHapticTime > 0.15 {
                 lastHapticTime = now
                 let intensity = min(CGFloat(impulse) / 12.0, 1.0)
@@ -786,6 +1019,60 @@ extension GameScene: SKPhysicsContactDelegate {
                 coinImpactGenerator.prepare()
             }
             #endif
+        }
+
+        // --- Junk-wall haptics (.light) ---
+        let junkHitWall = (a == PhysicsCategory.junk && b == PhysicsCategory.wall) ||
+                          (a == PhysicsCategory.wall && b == PhysicsCategory.junk)
+
+        if junkHitWall {
+            #if os(iOS)
+            let impulse = contact.collisionImpulse
+            let now = CACurrentMediaTime()
+            if impulse > 2.0, now - lastHapticTime > 0.12 {
+                lastHapticTime = now
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+            #endif
+        }
+
+        // --- Squash & stretch on wall impact (balloons only) ---
+        let balloonHitWall = (a == PhysicsCategory.balloon && b == PhysicsCategory.wall) ||
+                             (a == PhysicsCategory.wall && b == PhysicsCategory.balloon)
+
+        if balloonHitWall {
+            let impulse = contact.collisionImpulse
+            guard impulse > 2.0 else { return }
+
+            let node: SKNode?
+            if a == PhysicsCategory.balloon {
+                node = contact.bodyA.node
+            } else {
+                node = contact.bodyB.node
+            }
+            guard let node else { return }
+
+            let intensity = min(CGFloat(impulse) / 15.0, 0.35)
+            let squashBig: CGFloat = 1.0 + intensity
+            let squashSmall: CGFloat = 1.0 - intensity * 0.6
+
+            let vx = abs(node.physicsBody?.velocity.dx ?? 0)
+            let vy = abs(node.physicsBody?.velocity.dy ?? 0)
+            let isHorizontal = vx > vy
+
+            let action: SKAction
+            if isHorizontal {
+                action = .sequence([
+                    .scaleX(to: squashSmall, y: squashBig, duration: 0.06),
+                    .scaleX(to: 1.0, y: 1.0, duration: 0.15)
+                ])
+            } else {
+                action = .sequence([
+                    .scaleX(to: squashBig, y: squashSmall, duration: 0.06),
+                    .scaleX(to: 1.0, y: 1.0, duration: 0.15)
+                ])
+            }
+            node.run(action, withKey: "squash")
         }
     }
 }

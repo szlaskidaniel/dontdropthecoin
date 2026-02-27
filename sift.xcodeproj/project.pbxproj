@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		656A01912F50A0A8004BCF72 /* fizz.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = fizz.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		656A01912F50A0A8004BCF72 /* sift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sift.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		656A01B32F50A0A8004BCF72 /* Exceptions for "fizz Shared" folder in "fizz iOS" target */ = {
+		656A01B32F50A0A8004BCF72 /* Exceptions for "sift Shared" folder in "sift iOS" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Actions.sks,
@@ -29,14 +29,14 @@
 		656A01882F50A0A7004BCF72 /* fizz Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				656A01B32F50A0A8004BCF72 /* Exceptions for "fizz Shared" folder in "fizz iOS" target */,
+				656A01B32F50A0A8004BCF72 /* Exceptions for "sift Shared" folder in "sift iOS" target */,
 			);
-			path = "fizz Shared";
+			path = "sift Shared";
 			sourceTree = "<group>";
 		};
 		656A01932F50A0A8004BCF72 /* fizz iOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "fizz iOS";
+			path = "sift iOS";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -64,7 +64,7 @@
 		656A01922F50A0A8004BCF72 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				656A01912F50A0A8004BCF72 /* fizz.app */,
+				656A01912F50A0A8004BCF72 /* sift.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -74,7 +74,7 @@
 /* Begin PBXNativeTarget section */
 		656A01902F50A0A8004BCF72 /* fizz iOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 656A01B42F50A0A8004BCF72 /* Build configuration list for PBXNativeTarget "fizz iOS" */;
+			buildConfigurationList = 656A01B42F50A0A8004BCF72 /* Build configuration list for PBXNativeTarget "sift iOS" */;
 			buildPhases = (
 				656A018D2F50A0A8004BCF72 /* Sources */,
 				656A018E2F50A0A8004BCF72 /* Frameworks */,
@@ -87,11 +87,11 @@
 			fileSystemSynchronizedGroups = (
 				656A01932F50A0A8004BCF72 /* fizz iOS */,
 			);
-			name = "fizz iOS";
+			name = "sift iOS";
 			packageProductDependencies = (
 			);
-			productName = "fizz iOS";
-			productReference = 656A01912F50A0A8004BCF72 /* fizz.app */;
+			productName = "sift iOS";
+			productReference = 656A01912F50A0A8004BCF72 /* sift.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -102,14 +102,14 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					656A01902F50A0A8004BCF72 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
-			buildConfigurationList = 656A01872F50A0A7004BCF72 /* Build configuration list for PBXProject "fizz" */;
+			buildConfigurationList = 656A01872F50A0A7004BCF72 /* Build configuration list for PBXProject "sift" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -171,8 +171,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = szlaski.fizz;
-				PRODUCT_NAME = fizz;
+				PRODUCT_BUNDLE_IDENTIFIER = szlaski.sift;
+				PRODUCT_NAME = sift;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -210,8 +210,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = szlaski.fizz;
-				PRODUCT_NAME = fizz;
+				PRODUCT_BUNDLE_IDENTIFIER = szlaski.sift;
+				PRODUCT_NAME = sift;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -262,6 +262,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 27E8998HNH;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -285,6 +286,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -324,6 +326,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 27E8998HNH;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -340,6 +343,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -347,7 +351,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		656A01872F50A0A7004BCF72 /* Build configuration list for PBXProject "fizz" */ = {
+		656A01872F50A0A7004BCF72 /* Build configuration list for PBXProject "sift" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				656A01BB2F50A0A8004BCF72 /* Debug */,
@@ -356,7 +360,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		656A01B42F50A0A8004BCF72 /* Build configuration list for PBXNativeTarget "fizz iOS" */ = {
+		656A01B42F50A0A8004BCF72 /* Build configuration list for PBXNativeTarget "sift iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				656A01B52F50A0A8004BCF72 /* Debug */,

@@ -15,6 +15,16 @@ class GameViewModel: ObservableObject {
     @Published var isGameOver: Bool = false
     @Published var timeRemaining: Int = 120
 
+    /// Total junk count at the start of the current stage (set once per stage).
+    @Published var totalJunkAtStart: Int = 0
+
+    /// Fraction of junk removed so far (0.0 ... 1.0).
+    var junkProgress: Double {
+        guard totalJunkAtStart > 0 else { return 0 }
+        let removed = totalJunkAtStart - junkRemaining
+        return min(1.0, Double(removed) / Double(totalJunkAtStart))
+    }
+
     // Scoring
     @Published var totalScore: Int = 0
     @Published var lastStageScore: Int = 0
@@ -36,6 +46,7 @@ class GameViewModel: ObservableObject {
     func setItemCounts(coins: Int, junk: Int) {
         coinsInJar = coins
         junkRemaining = junk
+        totalJunkAtStart = junk
         stageComplete = false
         startTimer()
     }
@@ -122,6 +133,7 @@ class GameViewModel: ObservableObject {
         totalScore = 0
         lastStageScore = 0
         lastMultiplier = 1.0
+        totalJunkAtStart = 0
         timeRemaining = currentStageDuration
         stopTimer()
     }
