@@ -146,11 +146,11 @@ enum EmojiType: CaseIterable {
         }
     }
 
-    /// Random junk type; one additional type unlocks every second stage.
+    /// Random junk type; one additional type unlocks every third stage.
     static func randomJunk(forStage stage: Int) -> EmojiType {
         let basePool: [EmojiType] = [.apple, .teddy, .shoe]
         let unlocksByStage: [EmojiType] = [.banana, .book, .gift, .duck, .donut, .puzzle]
-        let unlockedCount = max(0, stage / 2)
+        let unlockedCount = max(0, stage / 3)
         let unlocked = Array(unlocksByStage.prefix(unlockedCount))
         let pool = basePool + unlocked
         return pool.randomElement()!
