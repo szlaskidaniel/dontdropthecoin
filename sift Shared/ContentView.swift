@@ -66,6 +66,22 @@ struct GameHUD: View {
         viewModel.timeRemaining <= 10 ? .red : .white
     }
 
+    private var isScoreExpanded: Bool {
+        viewModel.stageComplete || viewModel.isTallying
+    }
+
+    private var scoreFontSize: CGFloat {
+        isScoreExpanded ? 52 : 24
+    }
+
+    private var scoreHorizontalPadding: CGFloat {
+        isScoreExpanded ? 30 : 18
+    }
+
+    private var scoreVerticalPadding: CGFloat {
+        isScoreExpanded ? 10 : 5
+    }
+
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: 10) {
@@ -86,17 +102,21 @@ struct GameHUD: View {
                     Spacer(minLength: 12)
 
                     // Right: timer
-                    HStack(spacing: 6) {
+                    HStack(spacing: 0) {
                         Text("Time")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .frame(width: 44, alignment: .leading)
+                        Spacer(minLength: 10)
                         Text("\(viewModel.timeRemaining)")
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(timerColor)
                             .contentTransition(.numericText())
                             .animation(.spring(duration: 0.3), value: viewModel.timeRemaining)
+                            .frame(width: 72, alignment: .trailing)
                     }
-                    .padding(.trailing, 2)
+                    .frame(width: 130, alignment: .trailing)
+                    .padding(.trailing, -14)
                     .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
@@ -130,12 +150,25 @@ struct GameHUD: View {
                 .frame(height: 6)
 
                 // Current score under progress bar
-                Text("Score \(viewModel.totalScore)")
-                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                Text("\(viewModel.totalScore)")
+                    .font(.system(size: scoreFontSize, weight: .black, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(Color(red: 0.3, green: 0.9, blue: 1.0))
+                    .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
                     .contentTransition(.numericText())
                     .animation(.spring(duration: 0.15), value: viewModel.totalScore)
+                    .padding(.horizontal, scoreHorizontalPadding)
+                    .padding(.vertical, scoreVerticalPadding)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(.ultraThinMaterial.opacity(isScoreExpanded ? 0.65 : 0.45))
+                            .overlay {
+                                Capsule(style: .continuous)
+                                    .stroke(Color.white.opacity(isScoreExpanded ? 0.24 : 0.14), lineWidth: 0.8)
+                            }
+                    }
+                    .scaleEffect(isScoreExpanded ? 1.0 : 0.86)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .animation(.spring(response: 0.45, dampingFraction: 0.82), value: isScoreExpanded)
             }
             .padding(.top, geo.safeAreaInsets.top + 10)
             .padding(.horizontal, 16)
