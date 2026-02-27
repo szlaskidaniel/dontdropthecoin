@@ -13,10 +13,15 @@ class GameViewModel: ObservableObject {
     @Published var junkRemaining: Int = 0
     @Published var stageComplete: Bool = false
     @Published var isGameOver: Bool = false
-    @Published var timeRemaining: Int = 60
+    @Published var timeRemaining: Int = 120
 
-    private let stageDuration = 60
+    private let earlyStageDuration = 120
+    private let laterStageDuration = 60
     private var timer: Timer?
+
+    private var currentStageDuration: Int {
+        stage <= 5 ? earlyStageDuration : laterStageDuration
+    }
 
     func setItemCounts(coins: Int, junk: Int) {
         coinsInJar = coins
@@ -54,7 +59,7 @@ class GameViewModel: ObservableObject {
         junkRemaining = 0
         stageComplete = false
         isGameOver = false
-        timeRemaining = stageDuration
+        timeRemaining = currentStageDuration
         stopTimer()
     }
 
@@ -62,7 +67,7 @@ class GameViewModel: ObservableObject {
 
     private func startTimer() {
         stopTimer()
-        timeRemaining = stageDuration
+        timeRemaining = currentStageDuration
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.timeRemaining -= 1

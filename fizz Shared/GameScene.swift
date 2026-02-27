@@ -134,7 +134,7 @@ class GameScene: SKScene {
     private let coinImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
     #endif
 
-    private let gravityStrength: CGFloat = 28.0
+    private let gravityStrength: CGFloat = 30.0
     private let balloonLiftForce: CGFloat = 12.0
 
     /// Jar geometry (set once in buildJar).
@@ -300,13 +300,42 @@ class GameScene: SKScene {
 
     private func startMotion() {
         #if os(iOS)
-        guard motionManager.isAccelerometerAvailable else { return }
-        motionManager.accelerometerUpdateInterval = 1.0 / 60.0
-        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let self, let data else { return }
+        guard motionManager.isDeviceMotionAvailable else { return }
+        motionManager.deviceMotionUpdateInterval = 1.0 / 60.0
+        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let self, let motion else { return }
+
+            let gx = CGFloat(motion.gravity.x)
+            let gy = CGFloat(motion.gravity.y)
+            let projectedMagnitude = hypot(gx, gy)
+
+            // Blend toward downward gravity as the phone gets flatter.
+            // This avoids a hard switch that feels clunky while still preventing floaty motion.
+            let flatThreshold: CGFloat = 0.28
+            let flatness = max(0, min(1, (flatThreshold - projectedMagnitude) / flatThreshold))
+            let blendedX = gx * (1 - flatness)
+            let blendedY = (gy * (1 - flatness)) + (-0.85 * flatness)
+
+            // Keep tilt-back controlled, but make forward throws trigger with less tilt.
+            let verticalScale: CGFloat
+            if blendedY < 0 {
+                verticalScale = 0.78
+            } else {
+                verticalScale = 1.18
+            }
+
+            let targetGravity = CGVector(
+                dx: blendedX * self.gravityStrength,
+                dy: blendedY * self.gravityStrength * verticalScale
+            )
+
+            let current = self.physicsWorld.gravity
+            let delta = hypot(targetGravity.dx - current.dx, targetGravity.dy - current.dy)
+            let smoothing = min(max(delta / 40.0, 0.18), 0.55)
+
             self.physicsWorld.gravity = CGVector(
-                dx: CGFloat(data.acceleration.x) * self.gravityStrength,
-                dy: CGFloat(data.acceleration.y) * self.gravityStrength
+                dx: current.dx + (targetGravity.dx - current.dx) * smoothing,
+                dy: current.dy + (targetGravity.dy - current.dy) * smoothing
             )
         }
         #endif
