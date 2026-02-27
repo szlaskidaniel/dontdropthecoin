@@ -628,7 +628,7 @@ class GameScene: SKScene {
         banner.fontName   = "AvenirNext-Bold"
         banner.fontSize   = 44
         banner.fontColor  = SKColor(red: 1, green: 0.85, blue: 0.1, alpha: 1)
-        banner.position   = CGPoint(x: frame.midX, y: frame.midY + 120)
+        banner.position   = CGPoint(x: frame.midX, y: frame.midY + 150)
         banner.zPosition  = 20
         banner.alpha      = 0
         banner.setScale(0.5)
@@ -639,6 +639,25 @@ class GameScene: SKScene {
             .scale(to: 1.0, duration: 0.4)
         ]))
 
+        // Multiplier label
+        if let vm = viewModel {
+            let multiplierText = String(format: "×%.1f", vm.lastMultiplier)
+            let multLabel = SKLabelNode(text: multiplierText)
+            multLabel.name       = "banner"
+            multLabel.fontName   = "AvenirNext-DemiBold"
+            multLabel.fontSize   = 22
+            multLabel.fontColor  = SKColor(white: 1, alpha: 0.7)
+            multLabel.position   = CGPoint(x: frame.midX, y: frame.midY + 110)
+            multLabel.zPosition  = 20
+            multLabel.alpha      = 0
+            addChild(multLabel)
+
+            multLabel.run(.sequence([
+                .wait(forDuration: 0.3),
+                .fadeIn(withDuration: 0.3)
+            ]))
+        }
+
         for coin in coinNodes {
             sparkleEffect(at: coin.position)
         }
@@ -647,8 +666,8 @@ class GameScene: SKScene {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         #endif
 
-        // Transition to next stage after a delay
-        run(.wait(forDuration: 2.0)) { [weak self] in
+        // Wait for tally animation (~2s) + a brief pause, then advance
+        run(.wait(forDuration: 3.5)) { [weak self] in
             self?.startNextStage()
         }
     }

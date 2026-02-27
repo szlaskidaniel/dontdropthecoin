@@ -55,17 +55,31 @@ struct GameHUD: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left: compact stats row
-            HStack(spacing: 14) {
-                compactStat(icon: "🏁", value: viewModel.stage)
-                compactStat(icon: "🪙", value: viewModel.coinsInJar,
-                            color: Color(red: 1, green: 0.84, blue: 0.1))
-                compactStat(icon: "🗑️", value: viewModel.junkRemaining)
+            // Left: stage
+            HStack(spacing: 4) {
+                Text("🏁")
+                    .font(.system(size: 14))
+                Text("\(viewModel.stage)")
+                    .font(.system(.callout, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.spring(duration: 0.3), value: viewModel.stage)
             }
+            .frame(minWidth: 50, alignment: .leading)
 
             Spacer()
 
-            // Right: prominent timer
+            // Center: total score (prominent)
+            Text("\(viewModel.totalScore)")
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(Color(red: 1, green: 0.84, blue: 0.1))
+                .contentTransition(.numericText())
+                .animation(.spring(duration: 0.15), value: viewModel.totalScore)
+
+            Spacer()
+
+            // Right: timer
             Text("\(viewModel.timeRemaining)")
                 .font(.system(size: 38, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -77,21 +91,6 @@ struct GameHUD: View {
         .padding(.trailing, 24)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
-    }
-
-    @ViewBuilder
-    private func compactStat(icon: String, value: Int,
-                             color: Color? = nil) -> some View {
-        HStack(spacing: 4) {
-            Text(icon)
-                .font(.system(size: 14))
-            Text("\(value)")
-                .font(.system(.callout, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(color ?? .primary)
-                .contentTransition(.numericText())
-                .animation(.spring(duration: 0.3), value: value)
-        }
     }
 }
 
