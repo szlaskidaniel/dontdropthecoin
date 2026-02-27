@@ -5,6 +5,7 @@
 
 import SpriteKit
 import CoreImage
+import simd
 
 #if os(iOS)
 import CoreMotion
@@ -126,6 +127,61 @@ enum EmojiType: CaseIterable {
     }
 }
 
+// MARK: - Crystal Palette
+
+private enum CrystalColorVariant: CaseIterable {
+    case cyan
+    case amber
+    case ruby
+    case emerald
+
+    var weight: Int {
+        switch self {
+        case .cyan: return 38
+        case .amber: return 24
+        case .ruby: return 20
+        case .emerald: return 18
+        }
+    }
+
+    var coreColor: SKColor {
+        switch self {
+        case .cyan:    return SKColor(red: 0.30, green: 0.86, blue: 1.00, alpha: 1.0)
+        case .amber:   return SKColor(red: 1.00, green: 0.77, blue: 0.25, alpha: 1.0)
+        case .ruby:    return SKColor(red: 0.95, green: 0.25, blue: 0.35, alpha: 1.0)
+        case .emerald: return SKColor(red: 0.28, green: 0.92, blue: 0.56, alpha: 1.0)
+        }
+    }
+
+    var glowVector: vector_float4 {
+        switch self {
+        case .cyan:    return vector_float4(0.30, 0.95, 1.00, 1.0)
+        case .amber:   return vector_float4(1.00, 0.82, 0.30, 1.0)
+        case .ruby:    return vector_float4(1.00, 0.28, 0.40, 1.0)
+        case .emerald: return vector_float4(0.28, 0.98, 0.60, 1.0)
+        }
+    }
+
+    var coreVector: vector_float4 {
+        switch self {
+        case .cyan:    return vector_float4(0.22, 0.74, 1.00, 1.0)
+        case .amber:   return vector_float4(0.96, 0.66, 0.18, 1.0)
+        case .ruby:    return vector_float4(0.86, 0.14, 0.24, 1.0)
+        case .emerald: return vector_float4(0.15, 0.75, 0.36, 1.0)
+        }
+    }
+
+    static func weightedRandom() -> CrystalColorVariant {
+        let totalWeight = allCases.reduce(0) { $0 + $1.weight }
+        var ticket = Int.random(in: 0..<totalWeight)
+        for color in allCases {
+            ticket -= color.weight
+            if ticket < 0 { return color }
+        }
+        return .cyan
+    }
+}
+
 // MARK: - Glass Shader Source (GLSL)
 
 /// Custom fragment shader that adds a specular sheen and inner glow to the jar.
@@ -168,21 +224,72 @@ void main() {
 }
 """
 
-/// Crystal glow shader: cheap shimmer and halo without additional light nodes.
+/// Crystal shader: colorized gemstone glow, internal facets, and directional rim lighting.
 private let crystalGlowShaderSource = """
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+vec2 hash22(vec2 p) {
+    return vec2(hash21(p), hash21(p + 19.19));
+}
+
+float voronoi(vec2 x) {
+    vec2 n = floor(x);
+    vec2 f = fract(x);
+    float minDist = 10.0;
+
+    for (int j = -1; j <= 1; ++j) {
+        for (int i = -1; i <= 1; ++i) {
+            vec2 g = vec2(float(i), float(j));
+            vec2 o = hash22(n + g);
+            vec2 r = g + o - f;
+            minDist = min(minDist, length(r));
+        }
+    }
+    return minDist;
+}
+
 void main() {
     vec2 uv = v_tex_coord;
     vec4 base = texture2D(u_texture, uv) * v_color_mix.a;
-
     float alpha = base.a;
+
+    if (alpha <= 0.001) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
+
     vec2 centered = uv - vec2(0.5);
     float dist = length(centered);
 
-    float halo = smoothstep(0.65, 0.2, dist) * alpha;
-    float shimmer = 0.88 + 0.12 * sin((uv.y + uv.x) * 22.0 + u_time * 4.0);
-    vec3 glow = vec3(0.35, 0.95, 1.0) * halo * 0.30 * shimmer;
+    float c = cos(u_rotation * 0.28);
+    float s = sin(u_rotation * 0.28);
+    mat2 rot = mat2(c, -s, s, c);
+    vec2 facetUV = rot * (centered * 6.0 + vec2(u_facet_seed * 2.3, -u_facet_seed * 1.7));
+    float cell = voronoi(facetUV + vec2(u_time * 0.08, -u_time * 0.06));
+    float facets = smoothstep(0.30, 0.08, cell);
+    float facetLines = smoothstep(0.11, 0.0, abs(cell - 0.18));
 
-    gl_FragColor = vec4(base.rgb * shimmer + glow, alpha);
+    vec2 lightDir = normalize(u_light_dir + vec2(0.0001, 0.0001));
+    vec2 normal2D = normalize(centered + vec2(0.0001, 0.0001));
+    float ndl = dot(normal2D, lightDir);
+
+    float edgeMask = smoothstep(0.24, 0.62, dist);
+    float rim = pow(max(ndl, 0.0), 1.8) * edgeMask;
+    float darkSide = max(-ndl, 0.0) * 0.28;
+    float shimmer = 0.90 + 0.10 * sin((uv.y + uv.x) * 21.0 + u_time * 3.2 + u_facet_seed * 6.0);
+
+    vec3 gemBase = mix(base.rgb, u_core_color.rgb, 0.74);
+    vec3 facetTint = mix(gemBase * 0.86, u_glow_color.rgb, facets * 0.52);
+    facetTint += vec3(1.0) * facetLines * 0.07;
+
+    float glowMask = smoothstep(0.66, 0.22, dist) * (0.58 + edgeMask * 0.42);
+    vec3 glow = u_glow_color.rgb * glowMask * 0.15 * shimmer;
+    vec3 lit = facetTint + glow + (u_glow_color.rgb * rim * 0.42);
+    lit *= (1.0 - darkSide);
+
+    gl_FragColor = vec4(lit, alpha);
 }
 """
 
@@ -219,14 +326,15 @@ class GameScene: SKScene {
     /// Precompiled glass shader — avoid recompilation per frame.
     private let glassShader = SKShader(source: glassShaderSource)
     private let jarStrokeShader = SKShader(source: jarStrokeShaderSource)
-    private let crystalGlowShader = SKShader(source: crystalGlowShaderSource)
 
     /// Texture cache for emoji sprites (avoids re-rendering each frame).
     private var emojiTextureCache: [String: SKTexture] = [:]
+    private var glintTexture: SKTexture?
 
     private var stageWon = false
     private var gameOver = false
     private var lastHapticTime: TimeInterval = 0
+    private var crystalSpawnIndex: Int = 0
 
     /// Track which nodes have already received their exit boost so we only apply it once.
     private var boostedNodes: Set<ObjectIdentifier> = []
@@ -969,7 +1077,8 @@ class GameScene: SKScene {
         sprite.shadowCastBitMask = 0
         sprite.shadowedBitMask = 0
         if type.isCrystal {
-            sprite.shader = crystalGlowShader
+            sprite.shadowedBitMask = LightCategory.scene
+            configureCrystalAppearance(sprite)
             sprite.blendMode = .alpha
         }
 
@@ -1005,6 +1114,90 @@ class GameScene: SKScene {
         sprite.physicsBody = body
         sprite.zPosition = 2
         addChild(sprite)
+    }
+
+    private func configureCrystalAppearance(_ sprite: SKSpriteNode) {
+        let crystalColor = CrystalColorVariant.weightedRandom()
+        let facetSeed = Float.random(in: 0.05...0.98)
+
+        let rotationUniform = SKUniform(name: "u_rotation", float: 0.0)
+        let lightDirUniform = SKUniform(name: "u_light_dir", vectorFloat2: vector_float2(0.0, 1.0))
+
+        let shader = SKShader(source: crystalGlowShaderSource)
+        shader.uniforms = [
+            SKUniform(name: "u_glow_color", vectorFloat4: crystalColor.glowVector),
+            SKUniform(name: "u_core_color", vectorFloat4: crystalColor.coreVector),
+            SKUniform(name: "u_facet_seed", float: facetSeed),
+            rotationUniform,
+            lightDirUniform
+        ]
+
+        sprite.shader = shader
+        sprite.color = crystalColor.coreColor
+        sprite.colorBlendFactor = 0.20
+        sprite.userData = sprite.userData ?? NSMutableDictionary()
+        sprite.userData?["uRotation"] = rotationUniform
+        sprite.userData?["uLightDir"] = lightDirUniform
+        sprite.userData?["glintPhase"] = CGFloat.random(in: 0 ... (.pi * 2))
+        sprite.userData?["glintRadius"] = max(5.0, sprite.size.width * 0.24)
+        sprite.userData?["glintPulse"] = CGFloat.random(in: 0.0...1.0)
+        sprite.userData?["spawnOrder"] = crystalSpawnIndex
+        crystalSpawnIndex += 1
+
+        addGlint(to: sprite)
+    }
+
+    private func addGlint(to crystal: SKSpriteNode) {
+        let glint: SKSpriteNode
+        if let texture = glintTexture {
+            glint = SKSpriteNode(texture: texture)
+        } else {
+            let texture = makeCircleTexture(radius: 1.6)
+            glintTexture = texture
+            glint = SKSpriteNode(texture: texture)
+        }
+
+        glint.name = "crystalGlint"
+        glint.blendMode = .add
+        glint.color = .white
+        glint.colorBlendFactor = 1.0
+        glint.alpha = 0.45
+        glint.zPosition = 3
+        glint.setScale(0.58)
+        crystal.addChild(glint)
+    }
+
+    private func updateCrystalLightingAndGlints(currentTime: TimeInterval) {
+        guard let light = primaryLight else { return }
+        let time = CGFloat(currentTime)
+
+        for case let crystal as SKSpriteNode in children where crystal.name == "crystal" {
+            if let rotationUniform = crystal.userData?["uRotation"] as? SKUniform {
+                rotationUniform.floatValue = Float(crystal.zRotation)
+            }
+
+            if let lightDirUniform = crystal.userData?["uLightDir"] as? SKUniform {
+                let dx = Float(light.position.x - crystal.position.x)
+                let dy = Float(light.position.y - crystal.position.y)
+                let len = max(sqrt(dx * dx + dy * dy), 0.0001)
+                lightDirUniform.vectorFloat2Value = vector_float2(dx / len, dy / len)
+            }
+
+            guard let glint = crystal.childNode(withName: "crystalGlint") as? SKSpriteNode else { continue }
+            let phase = (crystal.userData?["glintPhase"] as? CGFloat) ?? 0
+            let radius = (crystal.userData?["glintRadius"] as? CGFloat) ?? 6
+            let pulse = (crystal.userData?["glintPulse"] as? CGFloat) ?? 0
+            let angle = crystal.zRotation + phase
+
+            glint.position = CGPoint(
+                x: cos(angle) * radius,
+                y: sin(angle) * (radius * 0.74) + radius * 0.24
+            )
+
+            let sparkle = 0.32 + 0.16 * sin(time * 5.0 + pulse * 7.0)
+            glint.alpha = sparkle
+            glint.setScale(0.48 + sparkle * 0.12)
+        }
     }
 
     // MARK: - Sticky Web
@@ -1172,6 +1365,7 @@ class GameScene: SKScene {
 
     override func update(_ currentTime: TimeInterval) {
         guard !stageWon, !gameOver else { return }
+        updateCrystalLightingAndGlints(currentTime: currentTime)
 
         // Timer ran out — game over
         if let vm = viewModel, vm.timeRemaining <= 0 {
@@ -1429,6 +1623,7 @@ class GameScene: SKScene {
 
         stuckNodes.removeAll()
         boostedNodes.removeAll()
+        crystalSpawnIndex = 0
         viewModel?.nextStage()
         stageWon = false
         fillJar()
