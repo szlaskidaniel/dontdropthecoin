@@ -5,8 +5,10 @@
 
 import SwiftUI
 import SpriteKit
+import Combine
 #if os(iOS)
 import UIKit
+import CoreMotion
 #endif
 
 // MARK: - Root View
@@ -283,8 +285,7 @@ struct MainMenuOverlay: View {
             VStack(spacing: 24) {
                 Spacer()
 
-                Text("💎")
-                    .font(.system(size: 72))
+                MenuGemView()
 
                 Text("Sift")
                     .font(.system(size: 52, weight: .black, design: .rounded))
@@ -354,6 +355,101 @@ struct MainMenuOverlay: View {
                     .frame(height: 60)
             }
         }
+    }
+}
+
+private struct MenuGemView: View {
+    @State private var shimmerX: CGFloat = -1.3
+    @StateObject private var tilt = DeviceTiltObserver()
+
+    var body: some View {
+        let gemGlyph = Text("💎")
+            .font(.system(size: 82))
+
+        gemGlyph
+            .overlay {
+                GeometryReader { geo in
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            .white.opacity(1.0),
+                            .clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: geo.size.width * 0.52)
+                    .rotationEffect(.degrees(20 + Double(tilt.x) * 10))
+                    .offset(x: shimmerX * geo.size.width)
+                }
+                .mask(gemGlyph)
+                .blendMode(.screen)
+            }
+            .rotation3DEffect(.degrees(-Double(tilt.y) * 10), axis: (x: 1, y: 0, z: 0))
+            .rotation3DEffect(.degrees(Double(tilt.x) * 12), axis: (x: 0, y: 1, z: 0))
+            .offset(x: tilt.x * 10, y: -tilt.y * 8)
+            .shadow(
+                color: Color(red: 0.35, green: 0.9, blue: 1.0).opacity(0.52),
+                radius: 16,
+                x: tilt.x * 12,
+                y: 10 - (tilt.y * 12)
+            )
+            .scaleEffect(1.0 + (abs(tilt.x) + abs(tilt.y)) * 0.06)
+            .task {
+                tilt.start()
+                await runShimmerLoop()
+            }
+            .onDisappear {
+                tilt.stop()
+            }
+    }
+
+    @MainActor
+    private func runShimmerLoop() async {
+        while !Task.isCancelled {
+            shimmerX = -1.3
+            withAnimation(.linear(duration: 2.8)) {
+                shimmerX = 1.45
+            }
+
+            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+        }
+    }
+}
+
+private final class DeviceTiltObserver: ObservableObject {
+    @Published var x: CGFloat = 0
+    @Published var y: CGFloat = 0
+
+    #if os(iOS)
+    private let motionManager = CMMotionManager()
+    #endif
+
+    func start() {
+        #if os(iOS)
+        guard motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else { return }
+
+        motionManager.deviceMotionUpdateInterval = 1.0 / 60.0
+        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let self, let gravity = motion?.gravity else { return }
+            let rawX = CGFloat(gravity.x) * 1.9
+            let rawY = CGFloat(-gravity.y) * 1.9
+            let targetX = max(-1.0, min(1.0, rawX))
+            let targetY = max(-1.0, min(1.0, rawY))
+            let smoothing: CGFloat = 0.28
+            self.x = (self.x * (1 - smoothing)) + (targetX * smoothing)
+            self.y = (self.y * (1 - smoothing)) + (targetY * smoothing)
+        }
+        #endif
+    }
+
+    func stop() {
+        #if os(iOS)
+        motionManager.stopDeviceMotionUpdates()
+        #endif
+        x = 0
+        y = 0
     }
 }
 
