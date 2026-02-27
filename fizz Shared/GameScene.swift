@@ -55,37 +55,38 @@ enum EmojiType: CaseIterable {
         return "junk"
     }
 
-    /// Density — coins are heavy, junk is light.
+    /// Density — coins are noticeably heavier, junk is light and throwable.
     var density: CGFloat {
         switch self {
-        case .coinBag:   return 12.0
-        case .coin:      return 10.0
-        case .apple:     return 1.0
-        case .teddy:     return 0.8
-        case .shoe:      return 1.2
-        case .balloon:   return 0.3
+        case .coinBag:   return 5.0
+        case .coin:      return 4.0
+        case .apple:     return 0.6
+        case .teddy:     return 0.5
+        case .shoe:      return 0.7
+        case .balloon:   return 0.15
         }
     }
 
-    /// Friction — coins have high friction, junk has low friction.
+    /// Friction — coins grip surfaces, junk slides easily.
     var friction: CGFloat {
         switch self {
-        case .coinBag, .coin: return 0.9
-        case .apple:          return 0.2
-        case .teddy:          return 0.15
-        case .shoe:           return 0.25
-        case .balloon:        return 0.1
+        case .coinBag, .coin: return 0.7
+        case .apple:          return 0.15
+        case .teddy:          return 0.10
+        case .shoe:           return 0.20
+        case .balloon:        return 0.05
         }
     }
 
+    /// Bounciness — junk bounces around for fun, coins stay put.
     var restitution: CGFloat {
         switch self {
-        case .coinBag:   return 0.10
-        case .coin:      return 0.15
-        case .apple:     return 0.45
-        case .teddy:     return 0.50
-        case .shoe:      return 0.40
-        case .balloon:   return 0.60
+        case .coinBag:   return 0.15
+        case .coin:      return 0.20
+        case .apple:     return 0.55
+        case .teddy:     return 0.60
+        case .shoe:      return 0.50
+        case .balloon:   return 0.70
         }
     }
 
@@ -135,8 +136,8 @@ class GameScene: SKScene {
     private let coinImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
     #endif
 
-    private let gravityStrength: CGFloat = 30.0
-    private let balloonLiftForce: CGFloat = 12.0
+    private let gravityStrength: CGFloat = 14.0
+    private let balloonLiftForce: CGFloat = 6.0
 
     /// Jar geometry (set once in buildJar).
     private var jarMinX: CGFloat = 0
@@ -147,6 +148,9 @@ class GameScene: SKScene {
     private var stageWon = false
     private var gameOver = false
     private var lastHapticTime: TimeInterval = 0
+
+    /// Track which nodes have already received their exit boost so we only apply it once.
+    private var boostedNodes: Set<ObjectIdentifier> = []
 
     // MARK: Sticky Web
     /// Nodes currently stuck in a web zone, keyed by the node. Value is the web node they are stuck in.
@@ -220,8 +224,8 @@ class GameScene: SKScene {
         jarNode.name = "wall"
         let body = SKPhysicsBody(edgeChainFrom: jarPath)
         body.isDynamic          = false
-        body.friction           = 0.70
-        body.restitution        = 0.25
+        body.friction           = 0.40
+        body.restitution        = 0.30
         body.categoryBitMask    = PhysicsCategory.wall
         body.collisionBitMask   = PhysicsCategory.allEmoji
         body.contactTestBitMask = PhysicsCategory.coin
@@ -300,8 +304,8 @@ class GameScene: SKScene {
         body.density           = type.density
         body.restitution       = type.restitution
         body.friction          = type.friction
-        body.linearDamping     = type.isBalloon ? 2.0 : 0.12
-        body.angularDamping    = 0.60
+        body.linearDamping     = type.isBalloon ? 1.5 : 0.3
+        body.angularDamping    = 0.4
         body.allowsRotation    = !type.isBalloon  // keep balloons upright
         body.affectedByGravity = !type.isBalloon  // balloons ignore gravity
         body.categoryBitMask   = type.physicsCategory
@@ -402,7 +406,7 @@ class GameScene: SKScene {
             // Re-enable gravity (unless it's a balloon)
             let isBalloon = node.name == "balloon"
             pb.affectedByGravity = !isBalloon
-            pb.linearDamping = isBalloon ? 2.0 : 0.12
+            pb.linearDamping = isBalloon ? 1.5 : 0.3
 
             // Small random pop impulse
             let ix = CGFloat.random(in: -30...30)
@@ -452,29 +456,24 @@ class GameScene: SKScene {
             let gy = CGFloat(motion.gravity.y)
             let projectedMagnitude = hypot(gx, gy)
 
-            // Blend toward downward gravity as the phone gets flatter.
-            // This avoids a hard switch that feels clunky while still preventing floaty motion.
-            let flatThreshold: CGFloat = 0.28
+            // Gentle flat-phone fallback — only kick in when phone is nearly horizontal
+            let flatThreshold: CGFloat = 0.15
             let flatness = max(0, min(1, (flatThreshold - projectedMagnitude) / flatThreshold))
             let blendedX = gx * (1 - flatness)
-            let blendedY = (gy * (1 - flatness)) + (-0.85 * flatness)
+            let blendedY = (gy * (1 - flatness)) + (-0.65 * flatness)
 
-            // Keep tilt-back controlled, but make forward throws trigger with less tilt.
-            let verticalScale: CGFloat
-            if blendedY < 0 {
-                verticalScale = 0.78
-            } else {
-                verticalScale = 1.18
-            }
+            // Amplify upward tilts for satisfying "throw" gestures
+            let verticalScale: CGFloat = blendedY > 0 ? 1.4 : 0.9
 
             let targetGravity = CGVector(
                 dx: blendedX * self.gravityStrength,
                 dy: blendedY * self.gravityStrength * verticalScale
             )
 
+            // Responsive smoothing — fast follow on big changes, gentle on small ones
             let current = self.physicsWorld.gravity
             let delta = hypot(targetGravity.dx - current.dx, targetGravity.dy - current.dy)
-            let smoothing = min(max(delta / 40.0, 0.18), 0.55)
+            let smoothing = min(max(delta / 20.0, 0.35), 0.8)
 
             self.physicsWorld.gravity = CGVector(
                 dx: current.dx + (targetGravity.dx - current.dx) * smoothing,
@@ -501,6 +500,27 @@ class GameScene: SKScene {
         for child in children where child.name == "balloon" {
             if stuckNodes[child] == nil {  // only if not stuck in a web
                 child.physicsBody?.applyForce(CGVector(dx: 0, dy: balloonLiftForce))
+            }
+        }
+
+        // Exit boost — when an item clears the jar top, give it a satisfying fling
+        for child in children {
+            guard let pb = child.physicsBody, pb.isDynamic else { continue }
+            guard child.name == "junk" || child.name == "balloon" || child.name == "coin" else { continue }
+
+            let id = ObjectIdentifier(child)
+            if child.position.y > jarTopY + 10, !boostedNodes.contains(id) {
+                boostedNodes.insert(id)
+                // Amplify existing velocity direction for a "whoosh" effect
+                let vx = pb.velocity.dx
+                let vy = pb.velocity.dy
+                let speed = hypot(vx, vy)
+                if speed > 5 {
+                    let boost: CGFloat = 1.6
+                    pb.velocity = CGVector(dx: vx * boost, dy: vy * boost)
+                }
+                // Brief spin for visual flair
+                pb.angularVelocity += CGFloat.random(in: -8...8)
             }
         }
 
@@ -669,6 +689,7 @@ class GameScene: SKScene {
         }
 
         stuckNodes.removeAll()
+        boostedNodes.removeAll()
         viewModel?.nextStage()
         stageWon = false
         fillJar()
