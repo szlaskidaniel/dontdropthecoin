@@ -93,8 +93,18 @@ struct GameHUD: View {
     @ObservedObject var viewModel: GameViewModel
     @State private var showExitConfirmation = false
 
+    private let hudAccent = Color(red: 0.30, green: 0.86, blue: 1.00)
+    private let hudTextPrimary = Color.white.opacity(0.95)
+    private let hudTextSecondary = Color.white.opacity(0.72)
+
     private var timerColor: Color {
-        viewModel.timeRemaining <= 10 ? .red : .white
+        if viewModel.timeRemaining <= 10 {
+            return Color(red: 1.0, green: 0.34, blue: 0.28)
+        } else if viewModel.timeRemaining <= 30 {
+            return Color(red: 1.0, green: 0.82, blue: 0.30)
+        } else {
+            return hudAccent
+        }
     }
 
     private var isScoreExpanded: Bool {
@@ -126,11 +136,11 @@ struct GameHUD: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 12, weight: .semibold))
                             Text("Menu")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(hudTextPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(
@@ -151,9 +161,12 @@ struct GameHUD: View {
                     // Right: timer
                     HStack(spacing: 4) {
                         Text("Time")
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(1.1)
+                            .foregroundStyle(hudTextSecondary)
                         Text("\(viewModel.timeRemaining)")
-                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .font(.system(size: 33, weight: .black, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(timerColor)
                             .contentTransition(.numericText())
@@ -171,15 +184,15 @@ struct GameHUD: View {
                 GeometryReader { progressGeo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(Color.white.opacity(0.10))
                             .frame(height: 6)
 
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color(red: 0.3, green: 0.8, blue: 0.4),
-                                        Color(red: 0.2, green: 0.9, blue: 0.5)
+                                        Color(red: 0.20, green: 0.78, blue: 1.00),
+                                        Color(red: 0.28, green: 0.92, blue: 0.74)
                                     ],
                                     startPoint: .leading,
                                     endPoint: .trailing
@@ -199,10 +212,14 @@ struct GameHUD: View {
                 HStack {
                     HStack(spacing: 6) {
                         Text("Round")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(1.0)
+                            .foregroundStyle(hudTextSecondary)
                         Text("\(viewModel.stage)")
                             .font(.system(size: 20, weight: .heavy, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(hudTextPrimary)
                             .contentTransition(.numericText())
                             .animation(.spring(duration: 0.3), value: viewModel.stage)
                     }
@@ -212,7 +229,13 @@ struct GameHUD: View {
                     Text("\(viewModel.totalScore)")
                         .font(.system(size: scoreFontSize, weight: .black, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [hudAccent, Color.white.opacity(0.95)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .contentTransition(.numericText())
                         .animation(.spring(duration: 0.15), value: viewModel.totalScore)
                         .padding(.horizontal, scoreHorizontalPadding)
@@ -237,13 +260,13 @@ struct GameHUD: View {
                 ZStack {
                     Rectangle()
                         .fill(.ultraThinMaterial)
-                        .opacity(0.46)
+                        .opacity(0.52)
 
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.08),
+                            Color.white.opacity(0.10),
                             Color.white.opacity(0.02),
-                            Color.white.opacity(0.05)
+                            Color.white.opacity(0.06)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
