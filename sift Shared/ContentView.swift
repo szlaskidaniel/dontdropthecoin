@@ -36,7 +36,7 @@ struct ContentView: View {
             if viewModel.stageComplete {
                 VStack(spacing: 16) {
                     Spacer()
-                    Text("Tilt to remove the junk!\nKeep only 🪙 coins.")
+                    Text("Tilt to remove the junk!\nKeep only 💎 crystals.")
                         .font(.system(.callout, design: .rounded))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
@@ -79,7 +79,7 @@ struct GameHUD: View {
                 Text("\(viewModel.totalScore)")
                     .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(Color(red: 1, green: 0.84, blue: 0.1))
+                    .foregroundStyle(Color(red: 0.3, green: 0.9, blue: 1.0))
                     .contentTransition(.numericText())
                     .animation(.spring(duration: 0.15), value: viewModel.totalScore)
 

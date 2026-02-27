@@ -9,7 +9,7 @@ import Combine
 class GameViewModel: ObservableObject {
 
     @Published var stage: Int = 1
-    @Published var coinsInJar: Int = 0
+    @Published var crystalsInJar: Int = 0
     @Published var junkRemaining: Int = 0
     @Published var stageComplete: Bool = false
     @Published var isGameOver: Bool = false
@@ -43,8 +43,8 @@ class GameViewModel: ObservableObject {
         stage <= 5 ? earlyStageDuration : laterStageDuration
     }
 
-    func setItemCounts(coins: Int, junk: Int) {
-        coinsInJar = coins
+    func setItemCounts(crystals: Int, junk: Int) {
+        crystalsInJar = crystals
         junkRemaining = junk
         totalJunkAtStart = junk
         stageComplete = false
@@ -55,8 +55,8 @@ class GameViewModel: ObservableObject {
         junkRemaining = max(0, junkRemaining - count)
     }
 
-    func coinsLost(_ count: Int) {
-        coinsInJar = max(0, coinsInJar - count)
+    func crystalsLost(_ count: Int) {
+        crystalsInJar = max(0, crystalsInJar - count)
     }
 
     func stageCleared() {
@@ -65,8 +65,8 @@ class GameViewModel: ObservableObject {
         // Stage multiplier: later stages are worth more
         let stageMultiplier = 1.0 + Double(stage - 1) * 0.15
 
-        // Base points: coins saved × 100 × stage multiplier — awarded immediately
-        let basePoints = Int(Double(coinsInJar * 100) * stageMultiplier)
+        // Base points: crystals saved × 100 × stage multiplier — awarded immediately
+        let basePoints = Int(Double(crystalsInJar * 100) * stageMultiplier)
         lastMultiplier = stageMultiplier
         lastStageScore = basePoints
         totalScore += basePoints
@@ -126,7 +126,7 @@ class GameViewModel: ObservableObject {
     func reset() {
         stopTally()
         stage = 1
-        coinsInJar = 0
+        crystalsInJar = 0
         junkRemaining = 0
         stageComplete = false
         isGameOver = false

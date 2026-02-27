@@ -21,91 +21,87 @@ private struct LightCategory {
 
 private struct PhysicsCategory {
     static let wall:     UInt32 = 1 << 0
-    static let coin:     UInt32 = 1 << 1
+    static let crystal:  UInt32 = 1 << 1
     static let junk:     UInt32 = 1 << 2
     static let balloon:  UInt32 = 1 << 3
     static let web:      UInt32 = 1 << 4
-    static let allEmoji: UInt32 = coin | junk | balloon
+    static let allEmoji: UInt32 = crystal | junk | balloon
 }
 
 // MARK: - Emoji Type
 
 enum EmojiType: CaseIterable {
-    case coinBag, coin, apple, teddy, shoe, balloon
+    case crystal, apple, teddy, shoe, balloon
 
     var character: String {
         switch self {
-        case .coinBag:   return "💰"
-        case .coin:      return "🪙"
-        case .apple:     return "🍎"
-        case .teddy:     return "🧸"
-        case .shoe:      return "👟"
-        case .balloon:   return "🎈"
+        case .crystal:        return "💎"
+        case .apple:          return "🍎"
+        case .teddy:          return "🧸"
+        case .shoe:           return "👟"
+        case .balloon:        return "🎈"
         }
     }
 
-    var isCoin: Bool { self == .coin || self == .coinBag }
+    var isCrystal: Bool { self == .crystal}
     var isJunk: Bool { self == .apple || self == .teddy || self == .shoe }
     var isBalloon: Bool { self == .balloon }
 
     var physicsCategory: UInt32 {
         switch self {
-        case .coin, .coinBag: return PhysicsCategory.coin
-        case .balloon:        return PhysicsCategory.balloon
-        default:              return PhysicsCategory.junk
+        case .crystal:                  return PhysicsCategory.crystal
+        case .balloon:                  return PhysicsCategory.balloon
+        default:                        return PhysicsCategory.junk
         }
     }
 
     var nodeName: String {
-        if isCoin { return "coin" }
+        if isCrystal { return "crystal" }
         if isBalloon { return "balloon" }
         return "junk"
     }
 
-    /// Density — coins are noticeably heavier, junk is light and throwable.
+    /// Density — crystals are dense and gem-like, junk is light and throwable.
     var density: CGFloat {
         switch self {
-        case .coinBag:   return 5.0
-        case .coin:      return 4.0
-        case .apple:     return 0.6
-        case .teddy:     return 0.5
-        case .shoe:      return 0.7
-        case .balloon:   return 0.15
+        case .crystal:        return 3.5
+        case .apple:          return 0.6
+        case .teddy:          return 0.5
+        case .shoe:           return 0.7
+        case .balloon:        return 0.15
         }
     }
 
-    /// Friction — coins grip surfaces, junk slides easily.
+    /// Friction — crystals are smooth and slide easily, junk slides too.
     var friction: CGFloat {
         switch self {
-        case .coinBag, .coin: return 0.7
-        case .apple:          return 0.15
-        case .teddy:          return 0.10
-        case .shoe:           return 0.20
-        case .balloon:        return 0.05
+        case .crystal: return 0.3
+        case .apple:                    return 0.15
+        case .teddy:                    return 0.10
+        case .shoe:                     return 0.20
+        case .balloon:                  return 0.05
         }
     }
 
-    /// Bounciness — junk bounces around for fun, coins stay put.
+    /// Bounciness — crystals are hard and bouncy like gemstones, junk bounces around for fun.
     var restitution: CGFloat {
         switch self {
-        case .coinBag:   return 0.15
-        case .coin:      return 0.20
-        case .apple:     return 0.55
-        case .teddy:     return 0.60
-        case .shoe:      return 0.50
-        case .balloon:   return 0.70
+        case .crystal:        return 0.65
+        case .apple:          return 0.55
+        case .teddy:          return 0.60
+        case .shoe:           return 0.50
+        case .balloon:        return 0.70
         }
     }
 
     /// Radius for the physics body circle.
     var radius: CGFloat {
         switch self {
-        case .coinBag:   return 20
-        case .coin:      return 18
-        case .apple:     return 16
-        case .teddy:     return 24
-        case .shoe:      return 22
-        case .balloon:   return 40
+        case .crystal:        return 18
+        case .apple:          return 16
+        case .teddy:          return 24
+        case .shoe:           return 22
+        case .balloon:        return 40
         }
     }
 
@@ -123,9 +119,9 @@ enum EmojiType: CaseIterable {
         return pool.randomElement()!
     }
 
-    /// Random coin type.
-    static func randomCoin() -> EmojiType {
-        let pool: [EmojiType] = [.coin, .coin, .coin, .coinBag]
+    /// Random crystal type.
+    static func randomCrystal() -> EmojiType {
+        let pool: [EmojiType] = [.crystal, .crystal, .crystal]
         return pool.randomElement()!
     }
 }
@@ -150,10 +146,10 @@ void main() {
     float sheenX = smoothstep(0.0, 0.4, 1.0 - abs(centered.x));
     float sheen = sheenY * sheenX * 0.12;
 
-    // Combine: very subtle blue-tinted edge glow + faint white specular highlight
+    // Combine: cyan-magenta gemstone edge glow + faint white specular highlight
     // The center of the jar must be fully transparent so objects inside are visible
-    vec4 glowColor = vec4(0.4, 0.55, 0.9, 1.0) * innerGlow;
-    vec4 sheenColor = vec4(1.0, 1.0, 1.0, 1.0) * sheen;
+    vec4 glowColor = vec4(0.3, 0.85, 0.9, 1.0) * innerGlow;
+    vec4 sheenColor = vec4(0.9, 0.6, 1.0, 1.0) * sheen;
 
     gl_FragColor = glowColor + sheenColor;
 }
@@ -182,7 +178,7 @@ class GameScene: SKScene {
 
     #if os(iOS)
     private let motionManager = CMMotionManager()
-    private let coinImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let crystalImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
     private let wallImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
     #endif
 
@@ -199,7 +195,7 @@ class GameScene: SKScene {
     /// The primary light source for the scene.
     private var primaryLight: SKLightNode?
 
-    /// Effect node wrapping coins/balloons for bloom post-processing.
+    /// Effect node wrapping crystals/balloons for bloom post-processing.
     private var bloomEffectNode: SKEffectNode?
 
     /// Precompiled glass shader — avoid recompilation per frame.
@@ -244,7 +240,7 @@ class GameScene: SKScene {
         physicsWorld.contactDelegate = self
 
         #if os(iOS)
-        coinImpactGenerator.prepare()
+        crystalImpactGenerator.prepare()
         wallImpactGenerator.prepare()
         #endif
 
@@ -266,7 +262,7 @@ class GameScene: SKScene {
         // --- Dynamic Lighting System ---
         setupLighting()
 
-        // --- Bloom effect node (coins & balloons rendered through this) ---
+        // --- Bloom effect node (crystals & balloons rendered through this) ---
         setupBloomEffectNode()
 
         buildJar()
@@ -323,10 +319,15 @@ class GameScene: SKScene {
         effectNode.shouldEnableEffects = true
         effectNode.shouldRasterize = false
 
-        // Subtle bloom via CIBloom
-        if let bloomFilter = CIFilter(name: "CIBloom") {
-            bloomFilter.setValue(8.0, forKey: kCIInputRadiusKey)
-            bloomFilter.setValue(0.6, forKey: kCIInputIntensityKey)
+        // Gemstone bloom: chain CIBloom with a cyan-magenta color shift for crystal glow
+        if let bloomFilter = CIFilter(name: "CIBloom"),
+           let colorFilter = CIFilter(name: "CIColorControls") {
+            bloomFilter.setValue(12.0, forKey: kCIInputRadiusKey)
+            bloomFilter.setValue(0.85, forKey: kCIInputIntensityKey)
+            // Slight saturation boost to bring out the gem tones
+            colorFilter.setValue(1.3, forKey: kCIInputSaturationKey)
+            colorFilter.setValue(0.05, forKey: kCIInputBrightnessKey)
+            // Chain: bloom first, then color boost
             effectNode.filter = bloomFilter
         }
 
@@ -671,19 +672,17 @@ class GameScene: SKScene {
 
     // MARK: - Fill Jar
 
-    private func fillJar() {
-        let coinBagCount = 5
-        let coinCount    = 5
-        let junkCount    = 12
-        let balloonCount = 3
-        let totalCoins   = 5
+    private func fillJar() {        
+        let crystalCount  = 5
+        let junkCount     = 12
+        let balloonCount  = 3
+        let totalCrystals = 5
         let jarW = jarMaxX - jarMinX
         let cx   = frame.midX
 
         // Build a shuffled list of all item types so positions are fully random
         var items: [EmojiType] = []
-        items += Array(repeating: EmojiType.coinBag, count: coinBagCount)
-        items += Array(repeating: EmojiType.coin, count: coinCount)
+        items += Array(repeating: EmojiType.crystal, count: crystalCount)
         for _ in 0..<junkCount { items.append(.randomJunk()) }
         items += Array(repeating: EmojiType.balloon, count: balloonCount)
         items.shuffle()
@@ -705,7 +704,7 @@ class GameScene: SKScene {
             }
         }
 
-        viewModel?.setItemCounts(coins: totalCoins, junk: junkCount + balloonCount)
+        viewModel?.setItemCounts(crystals: totalCrystals, junk: junkCount + balloonCount)
     }
 
     /// The current stage number (forwarded from the view model for difficulty scaling).
@@ -741,8 +740,8 @@ class GameScene: SKScene {
         body.categoryBitMask   = type.physicsCategory
         body.collisionBitMask  = PhysicsCategory.allEmoji | PhysicsCategory.wall
 
-        // All emoji report contact with webs; coins also with walls (for haptics)
-        if type.isCoin {
+        // All emoji report contact with webs; crystals also with walls (for haptics)
+        if type.isCrystal {
             body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
         } else {
             body.contactTestBitMask = PhysicsCategory.web | PhysicsCategory.wall
@@ -750,8 +749,8 @@ class GameScene: SKScene {
 
         sprite.physicsBody = body
 
-        // Coins and balloons go into the bloom effect node for post-processing glow
-        if type.isCoin || type.isBalloon {
+        // Crystals and balloons go into the bloom effect node for post-processing glow
+        if type.isCrystal || type.isBalloon {
             sprite.zPosition = 0  // relative to bloom container
             bloomEffectNode?.addChild(sprite)
         } else {
@@ -827,8 +826,8 @@ class GameScene: SKScene {
         drift.timingMode = .easeOut
         node.run(drift, withKey: "webDrift")
 
-        // Visual feedback for coins: add a color overlay to signal they're stuck
-        if node.name == "coin", let sprite = node as? SKSpriteNode {
+        // Visual feedback for crystals: add a color overlay to signal they're stuck
+        if node.name == "crystal", let sprite = node as? SKSpriteNode {
             let tint = SKAction.colorize(with: .purple, colorBlendFactor: 0.4, duration: 0.3)
             sprite.run(tint, withKey: "stuckTint")
         }
@@ -851,8 +850,8 @@ class GameScene: SKScene {
             let iy = CGFloat.random(in: 20...60)
             pb.applyImpulse(CGVector(dx: ix, dy: iy))
 
-            // Remove stuck tint from coins
-            if node.name == "coin", let sprite = node as? SKSpriteNode {
+            // Remove stuck tint from crystals
+            if node.name == "crystal", let sprite = node as? SKSpriteNode {
                 sprite.removeAction(forKey: "stuckTint")
                 let restore = SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.25)
                 sprite.run(restore)
@@ -943,11 +942,11 @@ class GameScene: SKScene {
 
         // Collect all dynamic emoji nodes (from both scene and bloom container)
         var allEmoji: [SKNode] = []
-        for child in children where (child.name == "coin" || child.name == "junk" || child.name == "balloon") {
+        for child in children where (child.name == "crystal" || child.name == "junk" || child.name == "balloon") {
             allEmoji.append(child)
         }
         if let bloom = bloomEffectNode {
-            for child in bloom.children where (child.name == "coin" || child.name == "junk" || child.name == "balloon") {
+            for child in bloom.children where (child.name == "crystal" || child.name == "junk" || child.name == "balloon") {
                 allEmoji.append(child)
             }
         }
@@ -996,7 +995,7 @@ class GameScene: SKScene {
         }
 
         var removedJunk = 0
-        var removedCoins = 0
+        var removedCrystals = 0
         var removedBalloons = 0
 
         for child in allEmoji {
@@ -1020,8 +1019,8 @@ class GameScene: SKScene {
             if outOfBounds {
                 if child.name == "junk" {
                     removedJunk += 1
-                } else if child.name == "coin" {
-                    removedCoins += 1
+                } else if child.name == "crystal" {
+                    removedCrystals += 1
                 } else if child.name == "balloon" {
                     removedBalloons += 1
                 }
@@ -1038,20 +1037,20 @@ class GameScene: SKScene {
             #endif
         }
 
-        // Losing coins is allowed but costly — game over only when ALL coins are gone
-        if removedCoins > 0 {
-            viewModel?.coinsLost(removedCoins)
+        // Losing crystals is allowed but costly — game over only when ALL crystals are gone
+        if removedCrystals > 0 {
+            viewModel?.crystalsLost(removedCrystals)
 
             #if os(iOS)
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             #endif
 
-            // Check if all coins are gone (in both scene and bloom container)
-            var remainingCoins: [SKNode] = children.filter { $0.name == "coin" }
+            // Check if all crystals are gone (in both scene and bloom container)
+            var remainingCrystals: [SKNode] = children.filter { $0.name == "crystal" }
             if let bloom = bloomEffectNode {
-                remainingCoins.append(contentsOf: bloom.children.filter { $0.name == "coin" })
+                remainingCrystals.append(contentsOf: bloom.children.filter { $0.name == "crystal" })
             }
-            if remainingCoins.isEmpty {
+            if remainingCrystals.isEmpty {
                 gameOver = true
                 viewModel?.gameEnded()
                 showGameOverEffect()
@@ -1075,7 +1074,7 @@ class GameScene: SKScene {
             junkNodes.append(contentsOf: bloom.children.filter { $0.name == "junk" || $0.name == "balloon" })
         }
 
-        // Stage clear: all junk and balloons gone, coins still inside
+        // Stage clear: all junk and balloons gone, crystals still inside
         if junkNodes.isEmpty {
             stageWon = true
             viewModel?.stageCleared()
@@ -1084,14 +1083,14 @@ class GameScene: SKScene {
     }
 
     private func showWinEffect() {
-        // Collect coins from both scene and bloom container
-        var coinNodes: [SKNode] = children.filter { $0.name == "coin" }
+        // Collect crystals from both scene and bloom container
+        var crystalNodes: [SKNode] = children.filter { $0.name == "crystal" }
         if let bloom = bloomEffectNode {
-            coinNodes.append(contentsOf: bloom.children.filter { $0.name == "coin" })
+            crystalNodes.append(contentsOf: bloom.children.filter { $0.name == "crystal" })
         }
 
-        for coin in coinNodes {
-            coin.run(.repeatForever(.sequence([
+        for crystal in crystalNodes {
+            crystal.run(.repeatForever(.sequence([
                 .scale(to: 1.3, duration: 0.3),
                 .scale(to: 1.0, duration: 0.3),
             ])))
@@ -1102,7 +1101,7 @@ class GameScene: SKScene {
         banner.name       = "banner"
         banner.fontName   = "SFProRounded-Heavy"
         banner.fontSize   = 44
-        banner.fontColor  = SKColor(red: 1, green: 0.85, blue: 0.1, alpha: 1)
+        banner.fontColor  = SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
         banner.position   = CGPoint(x: frame.midX, y: frame.midY + 150)
         banner.zPosition  = 20
         banner.alpha      = 0
@@ -1133,12 +1132,12 @@ class GameScene: SKScene {
             ]))
         }
 
-        for coin in coinNodes {
+        for crystal in crystalNodes {
             let scenePos: CGPoint
-            if coin.parent === bloomEffectNode {
-                scenePos = convert(coin.position, from: bloomEffectNode!)
+            if crystal.parent === bloomEffectNode {
+                scenePos = convert(crystal.position, from: bloomEffectNode!)
             } else {
-                scenePos = coin.position
+                scenePos = crystal.position
             }
             sparkleEffect(at: scenePos)
         }
@@ -1180,7 +1179,7 @@ class GameScene: SKScene {
     private func startNextStage() {
         // Remove all emoji, web, and banner nodes from scene
         children.filter {
-            $0.name == "coin" || $0.name == "junk" || $0.name == "balloon" ||
+            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
             $0.name == "banner" || $0.name == "web"
         }
         .forEach { node in
@@ -1190,7 +1189,7 @@ class GameScene: SKScene {
 
         // Also remove emoji from the bloom container
         bloomEffectNode?.children.filter {
-            $0.name == "coin" || $0.name == "junk" || $0.name == "balloon"
+            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon"
         }
         .forEach { node in
             node.removeAllActions()
@@ -1207,10 +1206,16 @@ class GameScene: SKScene {
     // MARK: - Particle Effects
 
     private func sparkleEffect(at point: CGPoint) {
+        let gemColors: [SKColor] = [
+            SKColor(red: 0.2, green: 0.9, blue: 1.0, alpha: 0.9),   // cyan
+            SKColor(red: 0.8, green: 0.3, blue: 1.0, alpha: 0.9),   // magenta
+            SKColor(red: 0.5, green: 0.9, blue: 1.0, alpha: 0.9),   // light cyan
+            SKColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.9),   // white sparkle
+        ]
         for _ in 0..<8 {
             let r = CGFloat.random(in: 2...6)
             let particle = SKShapeNode(circleOfRadius: r)
-            particle.fillColor   = SKColor(red: 1, green: 0.9, blue: 0.2, alpha: 0.9)
+            particle.fillColor   = gemColors.randomElement()!
             particle.strokeColor = .clear
             particle.position    = point
             particle.zPosition   = 10
@@ -1263,17 +1268,17 @@ extension GameScene: SKPhysicsContactDelegate {
         let impulse = contact.collisionImpulse
         let now = CACurrentMediaTime()
 
-        // --- Coin-wall haptics (.heavy) + impact flash ---
-        let coinHitWall = (a == PhysicsCategory.coin && b == PhysicsCategory.wall) ||
-                          (a == PhysicsCategory.wall && b == PhysicsCategory.coin)
+        // --- Crystal-wall haptics (.heavy) + impact flash ---
+        let crystalHitWall = (a == PhysicsCategory.crystal && b == PhysicsCategory.wall) ||
+                             (a == PhysicsCategory.wall && b == PhysicsCategory.crystal)
 
-        if coinHitWall {
+        if crystalHitWall {
             #if os(iOS)
             if impulse > 3.0, now - lastHapticTime > 0.15 {
                 lastHapticTime = now
                 let intensity = min(CGFloat(impulse) / 12.0, 1.0)
-                coinImpactGenerator.impactOccurred(intensity: intensity)
-                coinImpactGenerator.prepare()
+                crystalImpactGenerator.impactOccurred(intensity: intensity)
+                crystalImpactGenerator.prepare()
             }
             #endif
         }
