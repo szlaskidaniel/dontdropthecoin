@@ -1622,7 +1622,7 @@ class GameScene: SKScene {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             #endif
 
-            // Check if all crystals are gone.
+            // Check if all crystals are gone from the scene entirely.
             let remainingCrystals = children.filter { $0.name == "crystal" }
             if remainingCrystals.isEmpty {
                 gameOver = true
@@ -1636,7 +1636,43 @@ class GameScene: SKScene {
             }
         }
 
+        // Check if all crystals have floated outside the jar (even if still on screen).
+        // If no crystal is inside the jar, the player has lost them all.
+        let allCrystalNodes = children.filter { $0.name == "crystal" }
+        if !allCrystalNodes.isEmpty {
+            let insideJar = allCrystalNodes.filter { isInsideJar($0.position) }
+            if insideJar.isEmpty {
+                gameOver = true
+                viewModel?.crystalsInJar = 0
+                viewModel?.gameEnded()
+                showGameOverEffect()
+
+                #if os(iOS)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                #endif
+                return
+            }
+        }
+
         checkWinCondition()
+    }
+
+    // MARK: - Jar Containment
+
+    /// Returns true when the given scene-space position is inside the jar's closed boundary.
+    /// Uses a closed copy of the jar path for accurate point-in-polygon testing.
+    private func isInsideJar(_ position: CGPoint) -> Bool {
+        guard let openPath = jarPath else { return false }
+        // Close the path to form a polygon (the jar mouth seals the top).
+        let closedPath = CGMutablePath()
+        closedPath.addPath(openPath)
+        closedPath.closeSubpath()
+        return closedPath.contains(position)
+    }
+
+    /// Counts crystals whose center is geometrically inside the jar.
+    private func crystalsInsideJar() -> [SKNode] {
+        return children.filter { $0.name == "crystal" && isInsideJar($0.position) }
     }
 
     // MARK: - Win / Game Over
@@ -1644,8 +1680,12 @@ class GameScene: SKScene {
     private func checkWinCondition() {
         let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" }
 
-        // Stage clear: all junk and balloons gone, crystals still inside
+        // Stage clear: all junk and balloons gone, at least some crystals inside the jar
         if junkNodes.isEmpty {
+            // Update crystalsInJar to reflect only gems actually inside the jar
+            let inJar = crystalsInsideJar()
+            viewModel?.crystalsInJar = inJar.count
+
             stageWon = true
             viewModel?.stageCleared()
             showWinEffect()
