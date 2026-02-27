@@ -17,8 +17,10 @@
 			membershipExceptions = (
 				Actions.sks,
 				Assets.xcassets,
+				ContentView.swift,
 				GameScene.sks,
 				GameScene.swift,
+				GameViewModel.swift,
 			);
 			target = 656A01902F50A0A8004BCF72 /* fizz iOS */;
 		};
@@ -27,8 +29,10 @@
 			membershipExceptions = (
 				Actions.sks,
 				Assets.xcassets,
+				ContentView.swift,
 				GameScene.sks,
 				GameScene.swift,
+				GameViewModel.swift,
 			);
 			target = 656A01A12F50A0A8004BCF72 /* fizz macOS */;
 		};

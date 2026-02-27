@@ -2,29 +2,17 @@
 //  GameViewController.swift
 //  fizz macOS
 //
-//  Created by Daniel on 26/02/2026.
-//
 
 import Cocoa
-import SpriteKit
-import GameplayKit
+import SwiftUI
 
 class GameViewController: NSViewController {
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        
-        let scene = GameScene.newGameScene()
-        
-        // Present the scene
-        let skView = self.view as! SKView
-        skView.presentScene(scene)
-        
-        skView.ignoresSiblingOrder = true
-        
-        skView.showsFPS = true
-        skView.showsNodeCount = true
+    override func loadView() {
+        // Replace the storyboard SKView with a SwiftUI hosting view.
+        // ContentView → SpriteView carries the full game scene.
+        let hosting = NSHostingView(rootView: ContentView())
+        hosting.frame = NSRect(x: 0, y: 0, width: 390, height: 844)
+        self.view = hosting
     }
-
 }
-
