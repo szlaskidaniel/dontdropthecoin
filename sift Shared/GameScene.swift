@@ -348,10 +348,8 @@ class GameScene: SKScene {
         effectNode.shouldEnableEffects = shouldEnableEffects
         effectNode.shouldRasterize = true
 
-        if let blurFilter = CIFilter(name: "CIGaussianBlur") {
-            blurFilter.setValue(1.0, forKey: kCIInputRadiusKey)
-            effectNode.filter = blurFilter
-        }
+        // Keep this node rasterized only; per-node blur here softens the whole jar and creates edge artifacts.
+        effectNode.filter = nil
 
         addChild(effectNode)
         jarEffectNode = effectNode
@@ -440,6 +438,14 @@ class GameScene: SKScene {
         jarVisualRoot.zPosition = 0
         jarEffectNode?.addChild(jarVisualRoot)
 
+        // Dedicated rasterized node for static glow/lighting details.
+        let glowEffectsNode = SKEffectNode()
+        glowEffectsNode.name = "jarGlowEffectsNode"
+        glowEffectsNode.zPosition = 2
+        glowEffectsNode.shouldEnableEffects = shouldEnableEffects
+        glowEffectsNode.shouldRasterize = true
+        jarVisualRoot.addChild(glowEffectsNode)
+
         // --- Layer 0: Back wall shadow catcher ---
         // A very subtle dark sprite behind the jar that receives faint shadows from objects inside.
         let backWall = SKSpriteNode(color: SKColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 0.12), size: CGSize(
@@ -491,6 +497,66 @@ class GameScene: SKScene {
         outline.zPosition   = 1
         jarVisualRoot.addChild(outline)
 
+        // --- Layer 3b: Outer edge glow (soft glass catch light) ---
+        let outerGlow = SKShapeNode(path: path)
+        outerGlow.name = "jarOuterGlow"
+        outerGlow.strokeColor = SKColor(red: 0.88, green: 0.94, blue: 1.0, alpha: 0.24)
+        outerGlow.lineWidth = 2.0
+        outerGlow.lineCap = .round
+        outerGlow.lineJoin = .round
+        outerGlow.fillColor = .clear
+        outerGlow.glowWidth = 4.6
+        outerGlow.isAntialiased = true
+        outerGlow.zPosition = 0
+        glowEffectsNode.addChild(outerGlow)
+
+        // --- Layer 3c: Inner rim light (glass thickness cue) ---
+        // Keep this on the shoulders/sides only so the floor doesn't get bright artifacts.
+        let innerRimOffset: CGFloat = 8.0
+        let lowerRimY = by + bodyCornerR + 20
+
+        let leftInnerRimPath = CGMutablePath()
+        leftInnerRimPath.move(to: CGPoint(x: neckMinX + innerRimOffset, y: jarTopY - 1))
+        leftInnerRimPath.addCurve(
+            to: CGPoint(x: jarMinX + innerRimOffset, y: shoulderY - 30),
+            control1: CGPoint(x: neckMinX + innerRimOffset, y: shoulderY + 20),
+            control2: CGPoint(x: jarMinX + innerRimOffset, y: shoulderY + 10)
+        )
+        leftInnerRimPath.addLine(to: CGPoint(x: jarMinX + innerRimOffset, y: lowerRimY))
+
+        let rightInnerRimPath = CGMutablePath()
+        rightInnerRimPath.move(to: CGPoint(x: neckMaxX - innerRimOffset, y: jarTopY - 1))
+        rightInnerRimPath.addCurve(
+            to: CGPoint(x: jarMaxX - innerRimOffset, y: shoulderY - 30),
+            control1: CGPoint(x: neckMaxX - innerRimOffset, y: shoulderY + 20),
+            control2: CGPoint(x: jarMaxX - innerRimOffset, y: shoulderY + 10)
+        )
+        rightInnerRimPath.addLine(to: CGPoint(x: jarMaxX - innerRimOffset, y: lowerRimY))
+
+        let leftInnerRim = SKShapeNode(path: leftInnerRimPath)
+        leftInnerRim.name = "jarInnerRimLight"
+        leftInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
+        leftInnerRim.lineWidth = 1.4
+        leftInnerRim.lineCap = .round
+        leftInnerRim.lineJoin = .round
+        leftInnerRim.fillColor = .clear
+        leftInnerRim.glowWidth = 1.8
+        leftInnerRim.isAntialiased = true
+        leftInnerRim.zPosition = 1
+        glowEffectsNode.addChild(leftInnerRim)
+
+        let rightInnerRim = SKShapeNode(path: rightInnerRimPath)
+        rightInnerRim.name = "jarInnerRimLight"
+        rightInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
+        rightInnerRim.lineWidth = 1.4
+        rightInnerRim.lineCap = .round
+        rightInnerRim.lineJoin = .round
+        rightInnerRim.fillColor = .clear
+        rightInnerRim.glowWidth = 1.8
+        rightInnerRim.isAntialiased = true
+        rightInnerRim.zPosition = 1
+        glowEffectsNode.addChild(rightInnerRim)
+
         // --- Layer 4: Left-side highlight (light reflection) ---
         let hlPath = CGMutablePath()
         let hlOff: CGFloat = 3  // inset from the main outline
@@ -513,6 +579,43 @@ class GameScene: SKScene {
         highlight.isAntialiased = true
         highlight.zPosition   = 3
         jarVisualRoot.addChild(highlight)
+
+        // --- Layer 5: Static specular sheen on upper shoulder ---
+        let sheenSize = CGSize(width: bodyW * 0.24, height: h * 0.14)
+        let sheen = SKSpriteNode(texture: makeCrescentSheenTexture(size: sheenSize), size: sheenSize)
+        sheen.name = "jarSpecularSheen"
+        sheen.position = CGPoint(
+            x: cx - bodyW * 0.12,
+            y: shoulderY + neckH * 0.34
+        )
+        sheen.alpha = 0.34
+        sheen.blendMode = .add
+        sheen.zPosition = 2
+        glowEffectsNode.addChild(sheen)
+
+        // --- Layer 6: Ambient occlusion in lower inner corners ---
+        let aoSize = CGSize(width: bodyCornerR * 1.9, height: bodyCornerR * 1.6)
+        let leftAO = SKSpriteNode(texture: makeAmbientOcclusionSpotTexture(size: aoSize), size: aoSize)
+        leftAO.name = "jarAmbientOcclusionLeft"
+        leftAO.position = CGPoint(
+            x: jarMinX + bodyCornerR + 14,
+            y: by + bodyCornerR + 8
+        )
+        leftAO.alpha = 0.22
+        leftAO.blendMode = .multiply
+        leftAO.zPosition = 1
+        glowEffectsNode.addChild(leftAO)
+
+        let rightAO = SKSpriteNode(texture: makeAmbientOcclusionSpotTexture(size: aoSize), size: aoSize)
+        rightAO.name = "jarAmbientOcclusionRight"
+        rightAO.position = CGPoint(
+            x: jarMaxX - bodyCornerR - 14,
+            y: by + bodyCornerR + 8
+        )
+        rightAO.alpha = 0.22
+        rightAO.blendMode = .multiply
+        rightAO.zPosition = 1
+        glowEffectsNode.addChild(rightAO)
 
         // Jar reflection shimmer particles
         addJarReflectionParticles()
@@ -633,6 +736,128 @@ class GameScene: SKScene {
         }
         return SKTexture(image: image)
         #endif
+    }
+
+    /// Creates a slightly shrunken copy of an open jar path, used for inner rim lighting.
+    private func makeInsetPath(from path: CGPath, inset: CGFloat, around center: CGPoint) -> CGPath {
+        let bounds = path.boundingBoxOfPath
+        guard bounds.width > 0, bounds.height > 0 else { return path }
+
+        let sx = max((bounds.width - inset * 2) / bounds.width, 0.85)
+        let sy = max((bounds.height - inset * 2) / bounds.height, 0.85)
+
+        var toOrigin = CGAffineTransform(translationX: -center.x, y: -center.y)
+        let originPath = path.copy(using: &toOrigin) ?? path
+
+        var scale = CGAffineTransform(scaleX: sx, y: sy)
+        let scaledPath = originPath.copy(using: &scale) ?? originPath
+
+        var fromOrigin = CGAffineTransform(translationX: center.x, y: center.y)
+        return scaledPath.copy(using: &fromOrigin) ?? path
+    }
+
+    /// Creates a fixed partial crescent highlight texture for a static glass reflection.
+    private func makeCrescentSheenTexture(size: CGSize) -> SKTexture {
+        let width = max(Int(size.width), 4)
+        let height = max(Int(size.height), 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKTexture() }
+
+        let rect = CGRect(origin: .zero, size: CGSize(width: width, height: height))
+        let outer = rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.08)
+        let inner = outer
+            .insetBy(dx: outer.width * 0.14, dy: outer.height * 0.18)
+            .offsetBy(dx: outer.width * 0.20, dy: outer.height * 0.02)
+
+        let crescentPath = CGMutablePath()
+        crescentPath.addEllipse(in: outer)
+        crescentPath.addEllipse(in: inner)
+
+        // Keep only a shoulder segment so the highlight does not read as an "eye" ring.
+        let segmentRect = CGRect(
+            x: rect.minX,
+            y: rect.height * 0.30,
+            width: rect.width * 0.76,
+            height: rect.height * 0.56
+        )
+
+        ctx.saveGState()
+        ctx.clip(to: segmentRect)
+        ctx.addPath(crescentPath)
+        ctx.clip(using: .evenOdd)
+
+        let components: [CGFloat] = [
+            1.0, 1.0, 1.0, 0.42,
+            1.0, 1.0, 1.0, 0.03
+        ]
+        if let gradient = CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: components,
+            locations: [0.0, 1.0],
+            count: 2
+        ) {
+            ctx.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: segmentRect.minX, y: segmentRect.maxY),
+                end: CGPoint(x: segmentRect.maxX, y: segmentRect.minY),
+                options: [.drawsAfterEndLocation]
+            )
+        }
+        ctx.restoreGState()
+
+        guard let image = ctx.makeImage() else { return SKTexture() }
+        return SKTexture(cgImage: image)
+    }
+
+    /// Creates a subtle radial dark spot used for ambient occlusion near glass corners.
+    private func makeAmbientOcclusionSpotTexture(size: CGSize) -> SKTexture {
+        let width = max(Int(size.width), 4)
+        let height = max(Int(size.height), 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKTexture() }
+
+        let center = CGPoint(x: CGFloat(width) * 0.5, y: CGFloat(height) * 0.5)
+        let radius = max(CGFloat(width), CGFloat(height)) * 0.55
+        let colors: [CGFloat] = [
+            0.0, 0.0, 0.0, 0.18,
+            0.0, 0.0, 0.0, 0.0
+        ]
+        if let gradient = CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: colors,
+            locations: [0.0, 1.0],
+            count: 2
+        ) {
+            ctx.drawRadialGradient(
+                gradient,
+                startCenter: center,
+                startRadius: 0,
+                endCenter: center,
+                endRadius: radius,
+                options: [.drawsAfterEndLocation]
+            )
+        }
+
+        guard let image = ctx.makeImage() else { return SKTexture() }
+        return SKTexture(cgImage: image)
     }
 
     // MARK: - Radial Gradient Background
