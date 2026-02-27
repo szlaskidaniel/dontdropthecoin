@@ -42,6 +42,8 @@ class GameViewModel: ObservableObject {
     @Published var totalScore: Int = 0
     @Published var lastStageScore: Int = 0
     @Published var lastMultiplier: Double = 1.0
+    @Published var wasPerfectStage: Bool = false
+    @Published var lastPerfectBonus: Int = 0
     /// True while the time→score tally animation is running.
     @Published var isTallying: Bool = false
 
@@ -95,9 +97,13 @@ class GameViewModel: ObservableObject {
         // Base points are heavily driven by gems preserved.
         let crystalBasePoints = Double(totalCrystalsAtStart * 1200)
         let basePoints = Int((crystalBasePoints * preservationWeight * stageMultiplier).rounded())
+        let isPerfectStage = totalCrystalsAtStart > 0 && crystalsInJar == totalCrystalsAtStart
+        let perfectBonus = isPerfectStage ? Int((Double(totalCrystalsAtStart * 450) * stageMultiplier).rounded()) : 0
         lastMultiplier = stageMultiplier * preservationWeight
-        lastStageScore = basePoints
-        totalScore += basePoints
+        wasPerfectStage = isPerfectStage
+        lastPerfectBonus = perfectBonus
+        lastStageScore = basePoints + perfectBonus
+        totalScore += basePoints + perfectBonus
 
         // Time bonus is secondary, but always visibly tallied per remaining second.
         // It is still strongly scaled by preserved gems, so gem preservation dominates.
@@ -145,6 +151,8 @@ class GameViewModel: ObservableObject {
         stopTally()
         stage += 1
         stageComplete = false
+        wasPerfectStage = false
+        lastPerfectBonus = 0
     }
 
     func gameEnded() {
@@ -166,6 +174,8 @@ class GameViewModel: ObservableObject {
         totalScore = 0
         lastStageScore = 0
         lastMultiplier = 1.0
+        wasPerfectStage = false
+        lastPerfectBonus = 0
         totalJunkAtStart = 0
         totalCrystalsAtStart = 0
         tallyPointsPerTick = 0

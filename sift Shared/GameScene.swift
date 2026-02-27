@@ -26,6 +26,8 @@ private struct PhysicsCategory {
     static let junk:     UInt32 = 1 << 2
     static let balloon:  UInt32 = 1 << 3
     static let web:      UInt32 = 1 << 4
+    static let ambient:  UInt32 = 1 << 5
+    static let ambientWall: UInt32 = 1 << 6
     static let allEmoji: UInt32 = crystal | junk | balloon
 }
 
@@ -381,6 +383,10 @@ class GameScene: SKScene {
     private let shakeAccelerationThreshold: Double = 2.5
     private var lastShakeTime: TimeInterval = 0
 
+    private var isGameplayActive: Bool {
+        viewModel?.gameState == .playing
+    }
+
     // MARK: - Factory
 
     class func newGameScene() -> GameScene {
@@ -440,6 +446,7 @@ class GameScene: SKScene {
         setupJarEffectNode()
 
         buildJar()
+        spawnAmbientBackgroundItems()
         startMotion()
     }
 
@@ -448,7 +455,8 @@ class GameScene: SKScene {
         // Remove any leftover nodes from a previous game
         children.filter {
             $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
-            $0.name == "banner" || $0.name == "web"
+            $0.name == "banner" || $0.name == "web" ||
+            $0.name == "ambientCrystal" || $0.name == "ambientEmoji"
         }
         .forEach { node in
             node.removeAllActions()
@@ -596,6 +604,23 @@ class GameScene: SKScene {
         body.contactTestBitMask = PhysicsCategory.allEmoji
         jarNode.physicsBody = body
         addChild(jarNode)
+
+        // Closed jar collider used only for ambient background items.
+        let ambientContainmentPath = CGMutablePath()
+        ambientContainmentPath.addPath(path)
+        ambientContainmentPath.closeSubpath()
+
+        let ambientWallNode = SKNode()
+        ambientWallNode.name = "ambientWall"
+        let ambientWallBody = SKPhysicsBody(edgeLoopFrom: ambientContainmentPath)
+        ambientWallBody.isDynamic = false
+        ambientWallBody.friction = 0.35
+        ambientWallBody.restitution = 0.35
+        ambientWallBody.categoryBitMask = PhysicsCategory.ambientWall
+        ambientWallBody.collisionBitMask = PhysicsCategory.ambient
+        ambientWallBody.contactTestBitMask = 0
+        ambientWallNode.physicsBody = ambientWallBody
+        addChild(ambientWallNode)
 
         let jarVisualRoot = SKNode()
         jarVisualRoot.name = "jarVisualRoot"
@@ -1188,6 +1213,62 @@ class GameScene: SKScene {
         addChild(sprite)
     }
 
+    private func spawnAmbientBackgroundItems() {
+        children.filter {
+            $0.name == "ambientCrystal" || $0.name == "ambientEmoji"
+        }
+        .forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
+
+        let jarW = jarMaxX - jarMinX
+        let cx = frame.midX
+        let baseYMin = jarBottomY + 130
+        let baseYMax = min(jarTopY - 120, jarBottomY + 360)
+
+        let ambientPool = EmojiType.allCases.filter { !$0.isCrystal && !$0.isBalloon }
+        for _ in 0..<4 {
+            guard let randomType = ambientPool.randomElement() else { continue }
+            let x = CGFloat.random(in: (cx - jarW * 0.22)...(cx + jarW * 0.22))
+            let y = CGFloat.random(in: baseYMin...baseYMax)
+            placeAmbientEmoji(type: randomType, at: CGPoint(x: x, y: y))
+        }
+    }
+
+    private func placeAmbientEmoji(type: EmojiType, at position: CGPoint) {
+        let texture = emojiTexture(for: type)
+        let sprite = SKSpriteNode(texture: texture)
+        sprite.name = type.isCrystal ? "ambientCrystal" : "ambientEmoji"
+        sprite.position = position
+        sprite.size = texture.size()
+        sprite.alpha = 0.78
+        sprite.zPosition = 1
+
+        sprite.lightingBitMask = LightCategory.scene
+        sprite.shadowCastBitMask = 0
+        sprite.shadowedBitMask = 0
+        if type.isCrystal {
+            sprite.shadowedBitMask = LightCategory.scene
+            configureCrystalAppearance(sprite)
+        }
+
+        let body = SKPhysicsBody(circleOfRadius: type.radius)
+        body.density = max(type.density * 0.8, 0.5)
+        body.restitution = type.restitution
+        body.friction = type.friction
+        body.linearDamping = 0.9
+        body.angularDamping = 0.7
+        body.allowsRotation = true
+        body.affectedByGravity = true
+        body.categoryBitMask = PhysicsCategory.ambient
+        body.collisionBitMask = PhysicsCategory.ambient | PhysicsCategory.ambientWall
+        body.contactTestBitMask = 0
+        sprite.physicsBody = body
+
+        addChild(sprite)
+    }
+
     private func configureCrystalAppearance(_ sprite: SKSpriteNode) {
         let crystalColor = CrystalColorVariant.weightedRandom()
         let facetSeed = Float.random(in: 0.05...0.98)
@@ -1243,7 +1324,7 @@ class GameScene: SKScene {
         guard let light = primaryLight else { return }
         let time = CGFloat(currentTime)
 
-        for case let crystal as SKSpriteNode in children where crystal.name == "crystal" {
+        for case let crystal as SKSpriteNode in children where crystal.name == "crystal" || crystal.name == "ambientCrystal" {
             if let rotationUniform = crystal.userData?["uRotation"] as? SKUniform {
                 rotationUniform.floatValue = Float(crystal.zRotation)
             }
@@ -1436,7 +1517,7 @@ class GameScene: SKScene {
     // MARK: - Update
 
     override func update(_ currentTime: TimeInterval) {
-        guard !stageWon, !gameOver else { return }
+        guard isGameplayActive, !stageWon, !gameOver else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
 
         // Timer ran out — game over
@@ -1573,14 +1654,21 @@ class GameScene: SKScene {
 
     private func showWinEffect() {
         let crystalNodes = children.filter { $0.name == "crystal" }
+        let isPerfectStage = viewModel?.wasPerfectStage ?? false
+        let perfectBonus = viewModel?.lastPerfectBonus ?? 0
 
         // Victory banner
-        let banner = SKLabelNode(text: "Stage Clear!")
+        let banner = SKLabelNode(text: isPerfectStage ? "Perfect Level!" : "Stage Clear!")
         banner.name       = "banner"
         banner.fontName   = "SFProRounded-Heavy"
         banner.fontSize   = 44
-        banner.fontColor  = SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
-        banner.position   = CGPoint(x: frame.midX, y: frame.midY + 150)
+        banner.fontColor  = isPerfectStage
+            ? SKColor(red: 1.0, green: 0.9, blue: 0.3, alpha: 1)
+            : SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
+        banner.position   = CGPoint(
+            x: frame.midX,
+            y: frame.midY + (isPerfectStage ? 176 : 150)
+        )
         banner.zPosition  = 20
         banner.alpha      = 0
         banner.setScale(0.5)
@@ -1591,23 +1679,67 @@ class GameScene: SKScene {
             .scale(to: 1.0, duration: 0.4)
         ]))
 
-        // Multiplier label
-        if let vm = viewModel {
-            let multiplierText = String(format: "×%.1f", vm.lastMultiplier)
-            let multLabel = SKLabelNode(text: multiplierText)
-            multLabel.name       = "banner"
-            multLabel.fontName   = "SFProRounded-Bold"
-            multLabel.fontSize   = 22
-            multLabel.fontColor  = SKColor(white: 1, alpha: 0.7)
-            multLabel.position   = CGPoint(x: frame.midX, y: frame.midY + 110)
-            multLabel.zPosition  = 20
-            multLabel.alpha      = 0
-            addChild(multLabel)
+        if isPerfectStage {
+            let perfectLabel = SKLabelNode(text: "No gems lost")
+            perfectLabel.name = "banner"
+            perfectLabel.fontName = "SFProRounded-Bold"
+            perfectLabel.fontSize = 24
+            perfectLabel.fontColor = SKColor(red: 1.0, green: 0.94, blue: 0.68, alpha: 1)
+            perfectLabel.position = CGPoint(x: frame.midX, y: frame.midY + 116)
+            perfectLabel.zPosition = 20
+            perfectLabel.alpha = 0
+            perfectLabel.setScale(0.85)
+            addChild(perfectLabel)
 
-            multLabel.run(.sequence([
-                .wait(forDuration: 0.3),
-                .fadeIn(withDuration: 0.3)
+            perfectLabel.run(.sequence([
+                .wait(forDuration: 0.2),
+                .group([
+                    .fadeIn(withDuration: 0.2),
+                    .scale(to: 1.0, duration: 0.2)
+                ]),
+                .sequence([
+                    .scale(to: 1.06, duration: 0.28),
+                    .scale(to: 1.0, duration: 0.28)
+                ])
             ]))
+
+            let bonusLabel = SKLabelNode(text: "+\(perfectBonus) Perfect Bonus")
+            bonusLabel.name = "banner"
+            bonusLabel.fontName = "SFProRounded-Heavy"
+            bonusLabel.fontSize = 28
+            bonusLabel.fontColor = SKColor(red: 1.0, green: 0.86, blue: 0.2, alpha: 1)
+            bonusLabel.position = CGPoint(x: frame.midX, y: frame.midY + 74)
+            bonusLabel.zPosition = 21
+            bonusLabel.alpha = 0
+            bonusLabel.setScale(0.7)
+            addChild(bonusLabel)
+
+            bonusLabel.run(.sequence([
+                .wait(forDuration: 0.3),
+                .group([
+                    .fadeIn(withDuration: 0.14),
+                    .scale(to: 1.1, duration: 0.14)
+                ]),
+                .group([
+                    .scale(to: 1.0, duration: 0.18),
+                    .moveBy(x: 0, y: 16, duration: 0.18)
+                ])
+            ]))
+
+            for index in 0..<10 {
+                let delay = 0.08 + Double(index) * 0.05
+                run(.sequence([
+                    .wait(forDuration: delay),
+                    .run { [weak self] in
+                        guard let self else { return }
+                        let burstPoint = CGPoint(
+                            x: self.frame.midX + CGFloat.random(in: -100...100),
+                            y: self.frame.midY + CGFloat.random(in: 40...190)
+                        )
+                        self.sparkleEffect(at: burstPoint)
+                    }
+                ]))
+            }
         }
 
         for crystal in crystalNodes {
@@ -1620,7 +1752,8 @@ class GameScene: SKScene {
         #endif
 
         // Wait for tally animation (~2s) + a brief pause, then advance
-        run(.wait(forDuration: 3.5)) { [weak self] in
+        let transitionDelay: TimeInterval = isPerfectStage ? 4.0 : 3.5
+        run(.wait(forDuration: transitionDelay)) { [weak self] in
             self?.startNextStage()
         }
     }
@@ -1798,6 +1931,8 @@ class GameScene: SKScene {
 extension GameScene: SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
+        guard isGameplayActive else { return }
+
         let a = contact.bodyA.categoryBitMask
         let b = contact.bodyB.categoryBitMask
 

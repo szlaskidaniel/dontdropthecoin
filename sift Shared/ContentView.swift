@@ -42,18 +42,7 @@ struct ContentView: View {
                 GameHUD(viewModel: viewModel)
             }
 
-            // ── Stage clear banner ───────────────────────────────────
-            if viewModel.stageComplete {
-                VStack(spacing: 16) {
-                    Spacer()
-                    Text("Tilt to remove the junk!\nKeep only 💎 crystals.")
-                        .font(.system(.callout, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 40)
-                }
-                .transition(.opacity)
-            }
+           
 
             // ── Main Menu overlay ────────────────────────────────────
             if viewModel.gameState == .menu {
@@ -292,7 +281,7 @@ struct MainMenuOverlay: View {
                 }
                 .padding(.horizontal, 50)
 
-                Text("Tilt to remove the junk.\nKeep only 💎 crystals!")
+                Text("Tilt to clear the clutter.\nKeep only 💎 crystals!")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.4))
