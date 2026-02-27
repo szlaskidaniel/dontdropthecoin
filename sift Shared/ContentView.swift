@@ -142,8 +142,9 @@ struct GameHUD: View {
                                 )
                         )
                     }
-                    .padding(.leading, 2)
+                    .padding(.leading, 14)
                     .padding(.top, 4)
+                    .offset(y: -(geo.safeAreaInsets.top))
 
                     Spacer(minLength: 12)
 
@@ -160,8 +161,9 @@ struct GameHUD: View {
                             .frame(width: 72, alignment: .trailing)
                     }
                     .frame(width: 130, alignment: .trailing)
-                    .padding(.trailing, 4)
+                    .padding(.trailing, 2)
                     .padding(.top, 4)
+                    .offset(y: -(geo.safeAreaInsets.top))
                 }
                 .frame(maxWidth: .infinity)
 
