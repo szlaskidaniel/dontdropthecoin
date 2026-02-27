@@ -32,7 +32,7 @@ private struct PhysicsCategory {
 // MARK: - Emoji Type
 
 enum EmojiType: CaseIterable {
-    case crystal, apple, teddy, shoe, balloon
+    case crystal, apple, teddy, shoe, banana, book, gift, duck, donut, puzzle, balloon
 
     var character: String {
         switch self {
@@ -40,12 +40,18 @@ enum EmojiType: CaseIterable {
         case .apple:          return "🍎"
         case .teddy:          return "🧸"
         case .shoe:           return "👟"
+        case .banana:         return "🍌"
+        case .book:           return "📘"
+        case .gift:           return "🎁"
+        case .duck:           return "🦆"
+        case .donut:          return "🍩"
+        case .puzzle:         return "🧩"
         case .balloon:        return "🎈"
         }
     }
 
     var isCrystal: Bool { self == .crystal}
-    var isJunk: Bool { self == .apple || self == .teddy || self == .shoe }
+    var isJunk: Bool { !isCrystal && !isBalloon }
     var isBalloon: Bool { self == .balloon }
 
     var physicsCategory: UInt32 {
@@ -69,6 +75,12 @@ enum EmojiType: CaseIterable {
         case .apple:          return 0.6
         case .teddy:          return 0.5
         case .shoe:           return 0.7
+        case .banana:         return 0.5
+        case .book:           return 0.9
+        case .gift:           return 0.6
+        case .duck:           return 0.5
+        case .donut:          return 0.6
+        case .puzzle:         return 0.8
         case .balloon:        return 0.15
         }
     }
@@ -80,6 +92,12 @@ enum EmojiType: CaseIterable {
         case .apple:                    return 0.15
         case .teddy:                    return 0.10
         case .shoe:                     return 0.20
+        case .banana:                   return 0.12
+        case .book:                     return 0.25
+        case .gift:                     return 0.18
+        case .duck:                     return 0.10
+        case .donut:                    return 0.14
+        case .puzzle:                   return 0.22
         case .balloon:                  return 0.05
         }
     }
@@ -91,6 +109,12 @@ enum EmojiType: CaseIterable {
         case .apple:          return 0.55
         case .teddy:          return 0.60
         case .shoe:           return 0.50
+        case .banana:         return 0.50
+        case .book:           return 0.35
+        case .gift:           return 0.58
+        case .duck:           return 0.62
+        case .donut:          return 0.45
+        case .puzzle:         return 0.52
         case .balloon:        return 0.70
         }
     }
@@ -102,6 +126,12 @@ enum EmojiType: CaseIterable {
         case .apple:          return 16
         case .teddy:          return 24
         case .shoe:           return 22
+        case .banana:         return 20
+        case .book:           return 22
+        case .gift:           return 20
+        case .duck:           return 22
+        case .donut:          return 20
+        case .puzzle:         return 22
         case .balloon:        return 40
         }
     }
@@ -109,14 +139,20 @@ enum EmojiType: CaseIterable {
     var fontSize: CGFloat {
         switch self {
         case .teddy, .shoe: return 42
+        case .gift, .duck:  return 40
+        case .puzzle:       return 38
         case .balloon:      return 72
         default:            return 36
         }
     }
 
-    /// Random junk type (apple, teddy, shoe).
-    static func randomJunk() -> EmojiType {
-        let pool: [EmojiType] = [.apple, .teddy, .shoe]
+    /// Random junk type; one additional type unlocks every second stage.
+    static func randomJunk(forStage stage: Int) -> EmojiType {
+        let basePool: [EmojiType] = [.apple, .teddy, .shoe]
+        let unlocksByStage: [EmojiType] = [.banana, .book, .gift, .duck, .donut, .puzzle]
+        let unlockedCount = max(0, stage / 2)
+        let unlocked = Array(unlocksByStage.prefix(unlockedCount))
+        let pool = basePool + unlocked
         return pool.randomElement()!
     }
 
@@ -1035,7 +1071,7 @@ class GameScene: SKScene {
         // Build a shuffled list of all item types so positions are fully random
         var items: [EmojiType] = []
         items += Array(repeating: EmojiType.crystal, count: crystalCount)
-        for _ in 0..<junkCount { items.append(.randomJunk()) }
+        for _ in 0..<junkCount { items.append(.randomJunk(forStage: stage)) }
         items += Array(repeating: EmojiType.balloon, count: balloonCount)
         items.shuffle()
 
