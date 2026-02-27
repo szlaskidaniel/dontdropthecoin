@@ -1502,13 +1502,6 @@ class GameScene: SKScene {
     private func showWinEffect() {
         let crystalNodes = children.filter { $0.name == "crystal" }
 
-        for crystal in crystalNodes {
-            crystal.run(.repeatForever(.sequence([
-                .scale(to: 1.3, duration: 0.3),
-                .scale(to: 1.0, duration: 0.3),
-            ])))
-        }
-
         // Victory banner
         let banner = SKLabelNode(text: "Stage Clear!")
         banner.name       = "banner"
@@ -1548,6 +1541,7 @@ class GameScene: SKScene {
         for crystal in crystalNodes {
             sparkleEffect(at: crystal.position)
         }
+        explodeRemainingCrystalsForScoring(crystalNodes)
 
         #if os(iOS)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -1557,6 +1551,70 @@ class GameScene: SKScene {
         run(.wait(forDuration: 3.5)) { [weak self] in
             self?.startNextStage()
         }
+    }
+
+    /// Consume all remaining crystals with a short explosion sequence so scoring feels earned.
+    private func explodeRemainingCrystalsForScoring(_ crystalNodes: [SKNode]) {
+        guard !crystalNodes.isEmpty else { return }
+
+        let baseStagePoints = max(viewModel?.lastStageScore ?? 0, 0)
+        let crystalCount = crystalNodes.count
+        let basePerCrystal = crystalCount > 0 ? baseStagePoints / crystalCount : 0
+        var remainder = crystalCount > 0 ? baseStagePoints % crystalCount : 0
+
+        let orderedCrystals = crystalNodes.sorted { $0.position.y < $1.position.y }
+        for (index, crystal) in orderedCrystals.enumerated() {
+            let pointsForThisCrystal = basePerCrystal + (remainder > 0 ? 1 : 0)
+            remainder = max(0, remainder - 1)
+            let delay = 0.35 + Double(index) * 0.08
+            runCrystalScoreExplosion(crystal, points: pointsForThisCrystal, delay: delay)
+        }
+    }
+
+    private func runCrystalScoreExplosion(_ crystal: SKNode, points: Int, delay: TimeInterval) {
+        crystal.run(.sequence([
+            .wait(forDuration: delay),
+            .run { [weak self, weak crystal] in
+                guard let self, let crystal, crystal.parent != nil else { return }
+
+                crystal.removeAllActions()
+                let point = crystal.position
+                self.sparkleEffect(at: point)
+                self.sparkleEffect(at: point)
+
+                let scoreLabel = SKLabelNode(text: "+\(points)")
+                scoreLabel.name = "banner"
+                scoreLabel.fontName = "SFProRounded-Heavy"
+                scoreLabel.fontSize = 28
+                scoreLabel.fontColor = SKColor(red: 0.98, green: 0.92, blue: 0.35, alpha: 1.0)
+                scoreLabel.position = CGPoint(x: point.x, y: point.y + 12)
+                scoreLabel.zPosition = 24
+                scoreLabel.alpha = 0
+                self.addChild(scoreLabel)
+
+                scoreLabel.run(.sequence([
+                    .group([
+                        .fadeIn(withDuration: 0.08),
+                        .moveBy(x: 0, y: 26, duration: 0.32),
+                        .scale(to: 1.08, duration: 0.12)
+                    ]),
+                    .group([
+                        .fadeOut(withDuration: 0.22),
+                        .moveBy(x: 0, y: 14, duration: 0.22)
+                    ]),
+                    .removeFromParent()
+                ]))
+
+                crystal.run(.sequence([
+                    .group([
+                        .fadeOut(withDuration: 0.14),
+                        .scale(to: 1.5, duration: 0.14),
+                        .rotate(byAngle: .pi, duration: 0.14)
+                    ]),
+                    .removeFromParent()
+                ]))
+            }
+        ]))
     }
 
     private func showGameOverEffect() {
