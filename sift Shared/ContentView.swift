@@ -67,75 +67,105 @@ struct GameHUD: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 0) {
-                // Left: stage
-                HStack(spacing: 4) {
-                    Text("🏁")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                    Text("\(viewModel.stage)")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.spring(duration: 0.3), value: viewModel.stage)
+        GeometryReader { geo in
+            VStack(spacing: 10) {
+                HStack {
+                    // Left: round
+                    HStack(spacing: 6) {
+                        Text("Round")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                        Text("\(viewModel.stage)")
+                            .font(.system(size: 22, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .animation(.spring(duration: 0.3), value: viewModel.stage)
+                    }
+                    .padding(.leading, 12)
+                    .padding(.top, 4)
+
+                    Spacer(minLength: 12)
+
+                    // Right: timer
+                    HStack(spacing: 6) {
+                        Text("Time")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                        Text("\(viewModel.timeRemaining)")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(timerColor)
+                            .contentTransition(.numericText())
+                            .animation(.spring(duration: 0.3), value: viewModel.timeRemaining)
+                    }
+                    .padding(.trailing, 2)
+                    .padding(.top, 4)
                 }
-                .frame(minWidth: 50, alignment: .leading)
+                .frame(maxWidth: .infinity)
 
-                Spacer()
+                // Progress bar — junk removal percentage
+                GeometryReader { progressGeo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 6)
 
-                // Center: total score
-                Text("\(viewModel.totalScore)")
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.3, green: 0.8, blue: 0.4),
+                                        Color(red: 0.2, green: 0.9, blue: 0.5)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(
+                                width: progressGeo.size.width * viewModel.junkProgress,
+                                height: 6
+                            )
+                            .cornerRadius(3)
+                            .animation(.spring(duration: 0.3), value: viewModel.junkProgress)
+                    }
+                }
+                .frame(height: 6)
+
+                // Current score under progress bar
+                Text("Score \(viewModel.totalScore)")
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Color(red: 0.3, green: 0.9, blue: 1.0))
                     .contentTransition(.numericText())
                     .animation(.spring(duration: 0.15), value: viewModel.totalScore)
-
-                Spacer()
-
-                // Right: timer
-                Text("\(viewModel.timeRemaining)")
-                    .font(.system(size: 38, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(timerColor)
-                    .contentTransition(.numericText())
-                    .animation(.spring(duration: 0.3), value: viewModel.timeRemaining)
             }
-            .padding(.leading, 20)
-            .padding(.trailing, 24)
-            .padding(.vertical, 8)
+            .padding(.top, geo.safeAreaInsets.top + 10)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .background {
+                ZStack {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .opacity(0.46)
 
-            // Progress bar — junk removal percentage
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 6)
-
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.3, green: 0.8, blue: 0.4),
-                                    Color(red: 0.2, green: 0.9, blue: 0.5)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(
-                            width: geo.size.width * viewModel.junkProgress,
-                            height: 6
-                        )
-                        .cornerRadius(3)
-                        .animation(.spring(duration: 0.3), value: viewModel.junkProgress)
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.08),
+                            Color.white.opacity(0.02),
+                            Color.white.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
+                .overlay {
+                    Rectangle()
+                        .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                }
+                .shadow(color: Color.black.opacity(0.12), radius: 14, x: 0, y: 6)
             }
-            .frame(height: 6)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .background(.ultraThinMaterial)
+        .ignoresSafeArea(edges: .top)
     }
 }
 
