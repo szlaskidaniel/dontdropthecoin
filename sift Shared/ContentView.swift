@@ -69,7 +69,11 @@ struct ContentView: View {
 
             // ── Daily Limit Reached overlay ─────────────────────────
             if viewModel.gameState == .dailyLimitReached {
-                DailyLimitOverlay(viewModel: viewModel) {
+                DailyLimitOverlay(
+                    viewModel: viewModel,
+                    scene: scene,
+                    playDirtAnimation: viewModel.isGameOver
+                ) {
                     // After cleaning jar, update scene dirt overlays
                     scene.updateDirtOverlays()
                 }
@@ -426,116 +430,148 @@ struct GameOverOverlay: View {
 
 struct DailyLimitOverlay: View {
     @ObservedObject var viewModel: GameViewModel
+    let scene: GameScene
+    /// When true, plays the dirt splatter animation before revealing the UI.
+    let playDirtAnimation: Bool
     /// Called after the jar is cleaned so the scene can update dirt overlays.
     var onClean: () -> Void
 
+    /// Controls whether the overlay content is visible (delayed when animating).
+    @State private var showContent = false
+    /// Background opacity — animated when dirt animation plays.
+    @State private var bgOpacity: Double = 0.80
+
     var body: some View {
         ZStack {
-            Color.black.opacity(0.80)
+            Color.black.opacity(bgOpacity)
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Spacer()
+            if showContent {
+                VStack(spacing: 24) {
+                    Spacer()
 
-                // Dirty jar icon
-                Text("🫙")
-                    .font(.system(size: 80))
+                    // Dirty jar icon
+                    Text("🫙")
+                        .font(.system(size: 80))
 
-                Text("Daily Limit Reached")
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.90, green: 0.70, blue: 0.35),
-                                Color(red: 0.85, green: 0.55, blue: 0.25)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
+                    Text("Daily Limit Reached")
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.90, green: 0.70, blue: 0.35),
+                                    Color(red: 0.85, green: 0.55, blue: 0.25)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
-                    .multilineTextAlignment(.center)
+                        .multilineTextAlignment(.center)
 
-                Text("Your jar is too dirty to sift.\nCome back tomorrow or clean it now!")
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white.opacity(0.55))
-                    .padding(.horizontal, 30)
+                    Text("Your jar is too dirty to sift.\nCome back tomorrow or clean it now!")
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .padding(.horizontal, 30)
 
-                Spacer()
+                    Spacer()
 
-                // "Clean the Jar" IAP button
-                Button {
-                    // TODO: Trigger StoreKit IAP purchase flow
-                    // For now, immediately clean (placeholder)
-                    viewModel.cleanJar()
-                    onClean()
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("Clean the Jar")
-                            .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        Text("$0.99")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    .tracking(1)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.30, green: 0.86, blue: 1.00),
-                                        Color(red: 0.20, green: 0.60, blue: 0.90)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                    // "Clean the Jar" IAP button
+                    Button {
+                        // TODO: Trigger StoreKit IAP purchase flow
+                        // For now, immediately clean (placeholder)
+                        scene.removeDirtExplosion()
+                        viewModel.cleanJar()
+                        onClean()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Clean the Jar")
+                                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            Text("$0.99")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        .tracking(1)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 18)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.30, green: 0.86, blue: 1.00),
+                                            Color(red: 0.20, green: 0.60, blue: 0.90)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                                 )
-                            )
-                    )
-                }
-                .padding(.horizontal, 40)
-
-                // "Watch Ad to Clean" button
-                Button {
-                    // TODO: Trigger rewarded ad flow
-                    // For now, immediately clean (placeholder)
-                    viewModel.cleanJar()
-                    onClean()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.rectangle.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                        Text("Watch Ad to Clean")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                        )
                     }
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(.ultraThinMaterial.opacity(0.5))
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                            )
-                    )
-                }
-                .padding(.horizontal, 40)
+                    .padding(.horizontal, 40)
 
-                // Back to menu
-                Button {
-                    viewModel.gameState = .menu
-                } label: {
-                    Text("Back to Menu")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.45))
-                }
-                .padding(.top, 8)
+                    // "Watch Ad to Clean" button
+                    Button {
+                        // TODO: Trigger rewarded ad flow
+                        // For now, immediately clean (placeholder)
+                        scene.removeDirtExplosion()
+                        viewModel.cleanJar()
+                        onClean()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.rectangle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                            Text("Watch Ad to Clean")
+                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.5))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .padding(.horizontal, 40)
 
-                Spacer()
-                    .frame(height: 50)
+                    // Back to menu
+                    Button {
+                        scene.removeDirtExplosion()
+                        viewModel.gameState = .menu
+                    } label: {
+                        Text("Back to Menu")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                    .padding(.top, 8)
+
+                    Spacer()
+                        .frame(height: 50)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .onAppear {
+            if playDirtAnimation {
+                // Start with lighter dim so the dirt animation is visible on the jar
+                bgOpacity = 0.35
+                // Play SpriteKit dirt explosion, then reveal UI
+                scene.playDirtyJarAnimation {
+                    withAnimation(.easeIn(duration: 0.5)) {
+                        bgOpacity = 0.80
+                    }
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        showContent = true
+                    }
+                }
+            } else {
+                // No animation — show immediately
+                showContent = true
             }
         }
     }

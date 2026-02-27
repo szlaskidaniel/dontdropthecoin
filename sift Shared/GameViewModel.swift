@@ -186,7 +186,12 @@ class GameViewModel: ObservableObject {
         if totalScore > highScore {
             highScore = totalScore
         }
-        gameState = .gameOver
+        // On the last free play, go straight to daily limit screen (with dirt animation)
+        if energy.isLimitReached {
+            gameState = .dailyLimitReached
+        } else {
+            gameState = .gameOver
+        }
     }
 
     func reset() {

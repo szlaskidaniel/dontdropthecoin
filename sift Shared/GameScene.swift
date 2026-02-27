@@ -2326,6 +2326,196 @@ class GameScene: SKScene {
         #endif
     }
 
+    // MARK: - Dirty Jar Explosion Animation
+
+    /// Plays a dramatic dirt splatter animation covering the entire jar, then calls completion.
+    /// Returns the horizontal half-width of the jar interior at a given Y coordinate,
+    /// accounting for the bottle shape (wide body narrowing into a neck).
+    /// Returns 0 if `y` is outside the jar vertically.
+    private func jarHalfWidthAt(y: CGFloat) -> CGFloat {
+        guard y >= jarBottomY, y <= jarTopY else { return 0 }
+        let jarW = jarMaxX - jarMinX
+        let jarH = jarTopY - jarBottomY
+        let bodyHalf = jarW / 2
+        let neckHalf = jarW * 0.38 / 2
+        let shoulderY = jarTopY - jarH * 0.36
+
+        if y <= shoulderY {
+            // Body region — full width (inset slightly for corner radius at very bottom)
+            let cornerR: CGFloat = 28
+            if y < jarBottomY + cornerR {
+                let t = (y - jarBottomY) / cornerR
+                return bodyHalf - cornerR * (1.0 - sqrt(max(0, 1.0 - (1.0 - t) * (1.0 - t))))
+            }
+            return bodyHalf
+        } else {
+            // Neck/shoulder region — interpolate from body width to neck width via smooth curve
+            let t = (y - shoulderY) / (jarTopY - shoulderY)
+            let smooth = t * t * (3.0 - 2.0 * t) // smoothstep
+            return bodyHalf + (neckHalf - bodyHalf) * smooth
+        }
+    }
+
+    /// Generates a random point guaranteed to be inside the jar silhouette.
+    private func randomPointInsideJar(rng: inout DirtRNG, insetFraction: CGFloat = 0.08) -> CGPoint {
+        let cx = (jarMinX + jarMaxX) / 2
+        let y = rng.nextCGFloat(in: jarBottomY + 10 ... jarTopY - 10)
+        let halfW = jarHalfWidthAt(y: y)
+        let inset = halfW * insetFraction
+        let safeHalf = max(halfW - inset, 0)
+        let x = cx + rng.nextCGFloat(in: -safeHalf ... safeHalf)
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Clamps a point so it stays inside the jar silhouette.
+    private func clampInsideJar(_ point: CGPoint, insetFraction: CGFloat = 0.08) -> CGPoint {
+        let cx = (jarMinX + jarMaxX) / 2
+        let y = min(max(point.y, jarBottomY + 6), jarTopY - 6)
+        let halfW = jarHalfWidthAt(y: y)
+        let inset = halfW * insetFraction
+        let safeHalf = max(halfW - inset, 0)
+        let x = min(max(point.x, cx - safeHalf), cx + safeHalf)
+        return CGPoint(x: x, y: y)
+    }
+
+    func playDirtyJarAnimation(completion: @escaping () -> Void) {
+        let jarH = jarTopY - jarBottomY
+        let cx = (jarMinX + jarMaxX) / 2
+
+        // Remove existing banners so the dirt animation is the focus
+        children.filter { $0.name == "banner" }.forEach { $0.removeFromParent() }
+
+        // Container for all dirt explosion nodes so we can manage them easily
+        let dirtContainer = SKNode()
+        dirtContainer.name = "dirtExplosion"
+        dirtContainer.zPosition = 15
+        addChild(dirtContainer)
+
+        var rng = DirtRNG(seed: 31415)
+
+        // --- Phase 1: Large dirt splatters burst outward from center ---
+        let burstCenter = CGPoint(x: cx, y: jarBottomY + jarH * 0.4)
+        let splatterCount = 18
+        for i in 0..<splatterCount {
+            let w = rng.nextCGFloat(in: 40...100)
+            let h = rng.nextCGFloat(in: 30...80)
+            let blotch = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
+            blotch.position = burstCenter
+            blotch.zPosition = 15
+            blotch.alpha = 0
+            blotch.setScale(0.2)
+            blotch.zRotation = rng.nextCGFloat(in: -.pi ... .pi)
+            dirtContainer.addChild(blotch)
+
+            // Generate a random target inside the jar
+            let target = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
+
+            let delay = Double(i) * 0.04
+            let targetAlpha = rng.nextCGFloat(in: 0.45...0.85)
+
+            blotch.run(.sequence([
+                .wait(forDuration: delay),
+                .group([
+                    .move(to: target, duration: 0.35),
+                    .scale(to: rng.nextCGFloat(in: 0.8...1.4), duration: 0.35),
+                    .fadeAlpha(to: targetAlpha, duration: 0.25)
+                ])
+            ]))
+        }
+
+        // --- Phase 2: Smear streaks dripping down (stay inside jar) ---
+        let streakCount = 10
+        for i in 0..<streakCount {
+            let length = rng.nextCGFloat(in: 50...120)
+            let thickness = rng.nextCGFloat(in: 12...28)
+            let smear = makeSmudgeBlotch(
+                size: CGSize(width: thickness, height: length),
+                rng: &rng
+            )
+            let startPt = randomPointInsideJar(rng: &rng, insetFraction: 0.15)
+            smear.position = startPt
+            smear.zPosition = 15
+            smear.alpha = 0
+            dirtContainer.addChild(smear)
+
+            let delay = 0.5 + Double(i) * 0.06
+            // Drip downward, but clamp so it doesn't exit the jar
+            let dripDist = rng.nextCGFloat(in: 30...80)
+            let dripTarget = clampInsideJar(
+                CGPoint(x: startPt.x, y: startPt.y - dripDist),
+                insetFraction: 0.10
+            )
+
+            smear.run(.sequence([
+                .wait(forDuration: delay),
+                .group([
+                    .fadeAlpha(to: rng.nextCGFloat(in: 0.4...0.7), duration: 0.3),
+                    .move(to: dripTarget, duration: 0.8)
+                ])
+            ]))
+        }
+
+        // --- Phase 3: Fine grime spots inside jar ---
+        let spotCount = 25
+        for i in 0..<spotCount {
+            let r = rng.nextCGFloat(in: 4...14)
+            let spot = makeGrimeSpot(radius: r, rng: &rng)
+            let pt = randomPointInsideJar(rng: &rng, insetFraction: 0.06)
+            spot.position = pt
+            spot.zPosition = 15
+            spot.alpha = 0
+            dirtContainer.addChild(spot)
+
+            let delay = 0.3 + Double(i) * 0.03
+            spot.run(.sequence([
+                .wait(forDuration: delay),
+                .group([
+                    .fadeAlpha(to: rng.nextCGFloat(in: 0.5...0.9), duration: 0.2),
+                    .scale(to: rng.nextCGFloat(in: 1.0...1.6), duration: 0.25)
+                ])
+            ]))
+        }
+
+        // --- Phase 4: Foggy overlay clipped to jar shape ---
+        if let path = jarPath {
+            let fogNode = SKShapeNode(path: path)
+            fogNode.fillColor = SKColor(red: 0.28, green: 0.22, blue: 0.15, alpha: 1.0)
+            fogNode.strokeColor = .clear
+            fogNode.zPosition = 14
+            fogNode.alpha = 0
+            dirtContainer.addChild(fogNode)
+
+            fogNode.run(.sequence([
+                .wait(forDuration: 0.6),
+                .fadeAlpha(to: 0.55, duration: 1.0)
+            ]))
+        }
+
+        // --- Haptic feedback for the splatter ---
+        #if os(iOS)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+        #endif
+
+        // --- After animation settles, call completion ---
+        run(.sequence([
+            .wait(forDuration: 2.5),
+            .run { completion() }
+        ]))
+    }
+
+    /// Remove the dirt explosion overlay nodes (called when transitioning away).
+    func removeDirtExplosion() {
+        children.filter { $0.name == "dirtExplosion" }.forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
+    }
+
     // MARK: - Stage Transition
 
     private func startNextStage() {
