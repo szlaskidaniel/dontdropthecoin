@@ -18,10 +18,15 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .top) {
             // ── Game canvas ──────────────────────────────────────────
-            SpriteView(scene: scene)
+            SpriteView(scene: scene, options: [.shouldCullNonVisibleNodes, .allowsTransparency])
                 .ignoresSafeArea()
                 .onAppear {
                     scene.viewModel = viewModel
+                    // Request 120Hz ProMotion refresh rate
+                    if let skView = scene.view {
+                        skView.preferredFramesPerSecond = 120
+                        skView.ignoresSiblingOrder = true
+                    }
                 }
 
             // ── HUD overlay ──────────────────────────────────────────

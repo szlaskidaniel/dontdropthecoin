@@ -21,12 +21,12 @@
 				GameScene.swift,
 				GameViewModel.swift,
 			);
-			target = 656A01902F50A0A8004BCF72 /* fizz iOS */;
+			target = 656A01902F50A0A8004BCF72 /* sift iOS */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		656A01882F50A0A7004BCF72 /* fizz Shared */ = {
+		656A01882F50A0A7004BCF72 /* sift Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				656A01B32F50A0A8004BCF72 /* Exceptions for "sift Shared" folder in "sift iOS" target */,
@@ -34,7 +34,7 @@
 			path = "sift Shared";
 			sourceTree = "<group>";
 		};
-		656A01932F50A0A8004BCF72 /* fizz iOS */ = {
+		656A01932F50A0A8004BCF72 /* sift iOS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "sift iOS";
 			sourceTree = "<group>";
@@ -55,8 +55,8 @@
 		656A01832F50A0A7004BCF72 = {
 			isa = PBXGroup;
 			children = (
-				656A01882F50A0A7004BCF72 /* fizz Shared */,
-				656A01932F50A0A8004BCF72 /* fizz iOS */,
+				656A01882F50A0A7004BCF72 /* sift Shared */,
+				656A01932F50A0A8004BCF72 /* sift iOS */,
 				656A01922F50A0A8004BCF72 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -72,7 +72,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		656A01902F50A0A8004BCF72 /* fizz iOS */ = {
+		656A01902F50A0A8004BCF72 /* sift iOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 656A01B42F50A0A8004BCF72 /* Build configuration list for PBXNativeTarget "sift iOS" */;
 			buildPhases = (
@@ -85,7 +85,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				656A01932F50A0A8004BCF72 /* fizz iOS */,
+				656A01932F50A0A8004BCF72 /* sift iOS */,
 			);
 			name = "sift iOS";
 			packageProductDependencies = (
@@ -123,7 +123,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				656A01902F50A0A8004BCF72 /* fizz iOS */,
+				656A01902F50A0A8004BCF72 /* sift iOS */,
 			);
 		};
 /* End PBXProject section */
@@ -163,8 +163,7 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -202,8 +201,7 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

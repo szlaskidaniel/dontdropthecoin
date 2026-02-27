@@ -4,11 +4,18 @@
 //
 
 import SpriteKit
+import CoreImage
 
 #if os(iOS)
 import CoreMotion
 import UIKit
 #endif
+
+// MARK: - Light Categories
+
+private struct LightCategory {
+    static let scene: UInt32 = 1 << 0
+}
 
 // MARK: - Physics Categories
 
@@ -123,6 +130,48 @@ enum EmojiType: CaseIterable {
     }
 }
 
+// MARK: - Glass Shader Source (GLSL)
+
+/// Custom fragment shader that adds a specular sheen and inner glow to the jar.
+/// Applied as a fillShader on the jar's glass shape node.
+private let glassShaderSource = """
+void main() {
+    vec2 uv = v_tex_coord;
+
+    // Signed distance from center (0,0) to edge (1,1 range)
+    vec2 centered = (uv - 0.5) * 2.0;
+
+    // Edge glow: only visible right at the edges, fades to fully transparent in the center
+    float edgeDist = length(centered);
+    float innerGlow = smoothstep(0.6, 1.0, edgeDist) * 0.06;
+
+    // Specular sheen on the upper shoulder (top 20% of the shape, narrow band)
+    float sheenY = smoothstep(0.72, 0.88, uv.y) * (1.0 - smoothstep(0.88, 0.95, uv.y));
+    float sheenX = smoothstep(0.0, 0.4, 1.0 - abs(centered.x));
+    float sheen = sheenY * sheenX * 0.12;
+
+    // Combine: very subtle blue-tinted edge glow + faint white specular highlight
+    // The center of the jar must be fully transparent so objects inside are visible
+    vec4 glowColor = vec4(0.4, 0.55, 0.9, 1.0) * innerGlow;
+    vec4 sheenColor = vec4(1.0, 1.0, 1.0, 1.0) * sheen;
+
+    gl_FragColor = glowColor + sheenColor;
+}
+"""
+
+/// Custom stroke shader that creates a subtle gradient along the jar outline.
+private let jarStrokeShaderSource = """
+void main() {
+    float t = v_path_distance / u_path_length;
+    // Gradient from cool blue-white at bottom to warm white at top
+    vec3 bottomColor = vec3(0.5, 0.6, 0.9);
+    vec3 topColor = vec3(0.9, 0.9, 1.0);
+    vec3 mixed = mix(bottomColor, topColor, t);
+    float alpha = mix(0.25, 0.45, t);
+    gl_FragColor = vec4(mixed * alpha, alpha);
+}
+"""
+
 // MARK: - GameScene
 
 class GameScene: SKScene {
@@ -134,6 +183,7 @@ class GameScene: SKScene {
     #if os(iOS)
     private let motionManager = CMMotionManager()
     private let coinImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let wallImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
     #endif
 
     private let gravityStrength: CGFloat = 14.0
@@ -146,7 +196,19 @@ class GameScene: SKScene {
     private var jarTopY: CGFloat = 0
     private var jarPath: CGMutablePath?
 
+    /// The primary light source for the scene.
+    private var primaryLight: SKLightNode?
 
+    /// Effect node wrapping coins/balloons for bloom post-processing.
+    private var bloomEffectNode: SKEffectNode?
+
+    /// Precompiled glass shader — avoid recompilation per frame.
+    private let glassShader = SKShader(source: glassShaderSource)
+    private let jarStrokeShader = SKShader(source: jarStrokeShaderSource)
+
+    /// Texture cache for emoji sprites (avoids re-rendering each frame).
+    private var emojiTextureCache: [String: SKTexture] = [:]
+    private var emojiNormalMapCache: [String: SKTexture] = [:]
 
     private var stageWon = false
     private var gameOver = false
@@ -173,27 +235,41 @@ class GameScene: SKScene {
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
+
+        // Enable post-processing effects on the scene itself
+        shouldEnableEffects = true
+
         physicsWorld.gravity = CGVector(dx: 0, dy: -gravityStrength)
         physicsWorld.speed = 1.0
         physicsWorld.contactDelegate = self
 
         #if os(iOS)
         coinImpactGenerator.prepare()
+        wallImpactGenerator.prepare()
         #endif
 
-        // Radial gradient background (deep navy → dark purple)
+        // Radial gradient background (center-lit studio environment)
         let bgNode = SKSpriteNode(texture: makeRadialGradientTexture(
             size: self.size,
-            innerColor: SKColor(red: 0.06, green: 0.06, blue: 0.18, alpha: 1),
-            outerColor: SKColor(red: 0.10, green: 0.03, blue: 0.14, alpha: 1)
+            innerColor: SKColor(red: 0.10, green: 0.10, blue: 0.22, alpha: 1),
+            outerColor: SKColor(red: 0.04, green: 0.02, blue: 0.08, alpha: 1)
         ))
         bgNode.position  = CGPoint(x: frame.midX, y: frame.midY)
         bgNode.zPosition = -10
         bgNode.name      = "background"
+        // Background receives light but does not cast or receive shadows
+        bgNode.lightingBitMask    = LightCategory.scene
+        bgNode.shadowedBitMask    = 0
+        bgNode.shadowCastBitMask  = 0
         addChild(bgNode)
 
-        buildJar()
+        // --- Dynamic Lighting System ---
+        setupLighting()
 
+        // --- Bloom effect node (coins & balloons rendered through this) ---
+        setupBloomEffectNode()
+
+        buildJar()
         fillJar()
         startMotion()
     }
@@ -202,6 +278,60 @@ class GameScene: SKScene {
         #if os(iOS)
         motionManager.stopDeviceMotionUpdates()
         #endif
+    }
+
+    // MARK: - Dynamic Lighting
+
+    private func setupLighting() {
+        // Primary light — top of scene, provides directional lighting and shadows
+        let light = SKLightNode()
+        light.name = "primaryLight"
+        light.position = CGPoint(x: frame.midX, y: frame.maxY - 40)
+        light.zPosition = 50
+
+        light.categoryBitMask = LightCategory.scene
+        light.lightColor = SKColor(white: 0.9, alpha: 1)
+        // Bright ambient so objects are never too dark — warm neutral tone
+        light.ambientColor = SKColor(red: 0.45, green: 0.42, blue: 0.50, alpha: 1)
+        light.shadowColor = SKColor(red: 0.0, green: 0.0, blue: 0.05, alpha: 0.22)
+        light.falloff = 0.4  // slower falloff so light reaches the bottom of the jar
+
+        addChild(light)
+        primaryLight = light
+
+        // Fill light — positioned inside the jar body to illuminate objects from up close
+        let fillLight = SKLightNode()
+        fillLight.name = "fillLight"
+        fillLight.position = CGPoint(x: frame.midX, y: frame.midY - 60)
+        fillLight.zPosition = 50
+
+        fillLight.categoryBitMask = LightCategory.scene
+        fillLight.lightColor = SKColor(red: 0.5, green: 0.5, blue: 0.6, alpha: 1)
+        fillLight.ambientColor = SKColor(red: 0, green: 0, blue: 0, alpha: 1)  // no additional ambient
+        fillLight.shadowColor = SKColor(white: 0, alpha: 0)  // fill light casts no shadows
+        fillLight.falloff = 1.0
+
+        addChild(fillLight)
+    }
+
+    // MARK: - Bloom Effect Node
+
+    private func setupBloomEffectNode() {
+        let effectNode = SKEffectNode()
+        effectNode.name = "bloomContainer"
+        effectNode.zPosition = 2
+        effectNode.shouldEnableEffects = true
+        effectNode.shouldRasterize = false
+
+        // Subtle bloom via CIBloom
+        if let bloomFilter = CIFilter(name: "CIBloom") {
+            bloomFilter.setValue(8.0, forKey: kCIInputRadiusKey)
+            bloomFilter.setValue(0.6, forKey: kCIInputIntensityKey)
+            effectNode.filter = bloomFilter
+        }
+
+        addChild(effectNode)
+        bloomEffectNode = effectNode
     }
 
     // MARK: - Jar Construction
@@ -227,16 +357,12 @@ class GameScene: SKScene {
         let bodyCornerR: CGFloat = 28
 
         // Build the jar as a smooth bottle-shaped edge-chain (open top).
-        // The shoulder is a smooth S-curve from the narrow neck to the wide body,
-        // NOT a horizontal shelf. This gives a proper bottle/jar silhouette.
         let path = CGMutablePath()
 
         // Start at left neck opening
         path.move(to: CGPoint(x: neckMinX, y: jarTopY))
 
         // Left side: smooth S-curve from neck down to body
-        // Control points pull the curve diagonally — first hugging the neck,
-        // then sweeping out to the body width.
         path.addCurve(
             to: CGPoint(x: jarMinX, y: shoulderY - 30),
             control1: CGPoint(x: neckMinX, y: shoulderY + 20),
@@ -286,6 +412,20 @@ class GameScene: SKScene {
         jarNode.physicsBody = body
         addChild(jarNode)
 
+        // --- Layer 0: Back wall shadow catcher ---
+        // A very subtle dark sprite behind the jar that receives faint shadows from objects inside.
+        let backWall = SKSpriteNode(color: SKColor(red: 0.05, green: 0.04, blue: 0.10, alpha: 0.12), size: CGSize(
+            width: bodyW + 20,
+            height: h + 20
+        ))
+        backWall.position = CGPoint(x: cx, y: by + h / 2)
+        backWall.zPosition = -5
+        backWall.name = "jarBackWall"
+        backWall.lightingBitMask   = LightCategory.scene
+        backWall.shadowedBitMask   = LightCategory.scene
+        backWall.shadowCastBitMask = 0
+        addChild(backWall)
+
         // --- Layer 1: Inner fill (depth tint) ---
         let innerFill = SKShapeNode(path: path)
         innerFill.name        = "jarLayer"
@@ -295,19 +435,33 @@ class GameScene: SKScene {
         innerFill.zPosition   = -3
         addChild(innerFill)
 
-        // --- Layer 2: Main glass outline ---
+        // --- Layer 2: Glass fill with custom shader (specular sheen + inner glow) ---
+        // The shader produces near-zero alpha in the center so objects inside remain visible.
+        // zPosition 8 puts this in front of everything as a transparent overlay.
+        let glassFill = SKShapeNode(path: path)
+        glassFill.name        = "jarGlass"
+        glassFill.strokeColor = .clear
+        glassFill.fillColor   = SKColor(white: 1.0, alpha: 0.01)  // near-transparent base; shader drives actual output
+        glassFill.fillShader  = glassShader
+        glassFill.lineJoin    = .round
+        glassFill.zPosition   = 8
+        glassFill.isAntialiased = true
+        addChild(glassFill)
+
+        // --- Layer 3: Main glass outline with gradient stroke shader ---
         let outline = SKShapeNode(path: path)
         outline.name        = "jarLayer"
-        outline.strokeColor = SKColor(white: 1, alpha: 0.18)
+        outline.strokeColor = .white      // shader overrides this
         outline.lineWidth   = 3.5
         outline.lineCap     = .round
         outline.lineJoin    = .round
-        outline.fillColor   = SKColor(white: 1, alpha: 0.025)
-        outline.glowWidth   = 2.0
-        outline.zPosition   = -1
+        outline.fillColor   = .clear
+        outline.strokeShader = jarStrokeShader
+        outline.glowWidth   = 2.5
+        outline.zPosition   = 6
         addChild(outline)
 
-        // --- Layer 3: Left-side highlight (light reflection) ---
+        // --- Layer 4: Left-side highlight (light reflection) ---
         let hlPath = CGMutablePath()
         let hlOff: CGFloat = 3  // inset from the main outline
         hlPath.move(to: CGPoint(x: neckMinX + hlOff, y: jarTopY))
@@ -320,13 +474,13 @@ class GameScene: SKScene {
 
         let highlight = SKShapeNode(path: hlPath)
         highlight.name        = "jarLayer"
-        highlight.strokeColor = SKColor(white: 1, alpha: 0.12)
+        highlight.strokeColor = SKColor(white: 1, alpha: 0.15)
         highlight.lineWidth   = 1.5
         highlight.lineCap     = .round
         highlight.lineJoin    = .round
         highlight.fillColor   = .clear
-        highlight.glowWidth   = 0.8
-        highlight.zPosition   = -0.5
+        highlight.glowWidth   = 1.0
+        highlight.zPosition   = 7
         addChild(highlight)
 
         // Jar reflection shimmer particles
@@ -377,6 +531,68 @@ class GameScene: SKScene {
         addChild(emitter)
     }
 
+    // MARK: - Emoji Texture Rendering
+
+    /// Renders an emoji character into a texture suitable for SKSpriteNode + normal mapping.
+    private func emojiTexture(for type: EmojiType) -> SKTexture {
+        let key = type.character
+        if let cached = emojiTextureCache[key] { return cached }
+
+        let fontSize = type.fontSize
+        let padding: CGFloat = 8
+        let size = CGSize(width: fontSize + padding * 2, height: fontSize + padding * 2)
+
+        #if os(iOS)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            let str = NSAttributedString(
+                string: type.character,
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: fontSize),
+                ]
+            )
+            let strSize = str.size()
+            let origin = CGPoint(
+                x: (size.width - strSize.width) / 2,
+                y: (size.height - strSize.height) / 2
+            )
+            str.draw(at: origin)
+        }
+        let texture = SKTexture(image: image)
+        #else
+        let image = NSImage(size: size, flipped: false) { rect in
+            let str = NSAttributedString(
+                string: type.character,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: fontSize),
+                ]
+            )
+            let strSize = str.size()
+            let origin = CGPoint(
+                x: (size.width - strSize.width) / 2,
+                y: (size.height - strSize.height) / 2
+            )
+            str.draw(at: origin)
+            return true
+        }
+        let texture = SKTexture(image: image)
+        #endif
+
+        emojiTextureCache[key] = texture
+        return texture
+    }
+
+    /// Generates (or retrieves cached) a normal map for the given emoji type.
+    private func emojiNormalMap(for type: EmojiType) -> SKTexture {
+        let key = type.character
+        if let cached = emojiNormalMapCache[key] { return cached }
+
+        let tex = emojiTexture(for: type)
+        let normalMap = tex.generatingNormalMap(withSmoothness: 0.5, contrast: 1.2)
+        emojiNormalMapCache[key] = normalMap
+        return normalMap
+    }
+
     /// Creates a small white circle texture for particle emitters (cross-platform).
     private func makeCircleTexture(radius: CGFloat) -> SKTexture {
         let diameter = radius * 2
@@ -417,8 +633,9 @@ class GameScene: SKScene {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return SKTexture() }
 
-        let center = CGPoint(x: CGFloat(w) / 2, y: CGFloat(h) * 0.55)
-        let radius = max(CGFloat(w), CGFloat(h)) * 0.7
+        // Center-lit: light source slightly above center for studio look
+        let center = CGPoint(x: CGFloat(w) / 2, y: CGFloat(h) * 0.60)
+        let radius = max(CGFloat(w), CGFloat(h)) * 0.75
 
         var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
         var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
@@ -501,12 +718,21 @@ class GameScene: SKScene {
     }
 
     private func placeEmoji(type: EmojiType, at position: CGPoint) {
-        let label = SKLabelNode(text: type.character)
-        label.name                  = type.nodeName
-        label.fontSize              = type.fontSize
-        label.verticalAlignmentMode = .center
-        label.position              = position
-        label.zPosition             = 2
+        let texture = emojiTexture(for: type)
+        let normalMap = emojiNormalMap(for: type)
+
+        let sprite = SKSpriteNode(texture: texture)
+        sprite.name                  = type.nodeName
+        sprite.position              = position
+        sprite.size                  = texture.size()
+
+        // --- Lighting & Normal Mapping ---
+        // Emojis are lit by the scene light and receive shadows, but do NOT cast shadows.
+        // Casting shadows from many small overlapping objects produces heavy dark artifacts.
+        sprite.normalTexture          = normalMap
+        sprite.lightingBitMask        = LightCategory.scene
+        sprite.shadowCastBitMask      = 0
+        sprite.shadowedBitMask        = LightCategory.scene
 
         let body = SKPhysicsBody(circleOfRadius: type.radius)
         body.density           = type.density
@@ -523,36 +749,18 @@ class GameScene: SKScene {
         if type.isCoin {
             body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
         } else {
-            body.contactTestBitMask = PhysicsCategory.web
+            body.contactTestBitMask = PhysicsCategory.web | PhysicsCategory.wall
         }
 
-        label.physicsBody = body
-        addChild(label)
+        sprite.physicsBody = body
 
-        // Pulsing glow behind coin emojis
-        if type.isCoin {
-            let glowRadius = type.radius + 8
-            let glow = SKShapeNode(circleOfRadius: glowRadius)
-            glow.name        = "coinGlow"
-            glow.fillColor   = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.15)
-            glow.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.08)
-            glow.lineWidth   = 2
-            glow.glowWidth   = 6
-            glow.zPosition   = -0.1
-            glow.position    = .zero
-
-            let pulse = SKAction.sequence([
-                .group([
-                    .scale(to: 1.15, duration: 0.8),
-                    .fadeAlpha(to: 0.25, duration: 0.8)
-                ]),
-                .group([
-                    .scale(to: 0.9, duration: 0.8),
-                    .fadeAlpha(to: 0.10, duration: 0.8)
-                ])
-            ])
-            glow.run(.repeatForever(pulse))
-            label.addChild(glow)
+        // Coins and balloons go into the bloom effect node for post-processing glow
+        if type.isCoin || type.isBalloon {
+            sprite.zPosition = 0  // relative to bloom container
+            bloomEffectNode?.addChild(sprite)
+        } else {
+            sprite.zPosition = 2
+            addChild(sprite)
         }
     }
 
@@ -624,9 +832,9 @@ class GameScene: SKScene {
         node.run(drift, withKey: "webDrift")
 
         // Visual feedback for coins: add a color overlay to signal they're stuck
-        if node.name == "coin", let label = node as? SKLabelNode {
+        if node.name == "coin", let sprite = node as? SKSpriteNode {
             let tint = SKAction.colorize(with: .purple, colorBlendFactor: 0.4, duration: 0.3)
-            label.run(tint, withKey: "stuckTint")
+            sprite.run(tint, withKey: "stuckTint")
         }
     }
 
@@ -648,10 +856,10 @@ class GameScene: SKScene {
             pb.applyImpulse(CGVector(dx: ix, dy: iy))
 
             // Remove stuck tint from coins
-            if node.name == "coin", let label = node as? SKLabelNode {
-                label.removeAction(forKey: "stuckTint")
+            if node.name == "coin", let sprite = node as? SKSpriteNode {
+                sprite.removeAction(forKey: "stuckTint")
                 let restore = SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.25)
-                label.run(restore)
+                sprite.run(restore)
             }
 
             // Small sparkle at the release point
@@ -731,19 +939,37 @@ class GameScene: SKScene {
         }
 
         // Apply upward force to balloons (negative gravity effect)
-        for child in children where child.name == "balloon" {
-            if stuckNodes[child] == nil {  // only if not stuck in a web
-                child.physicsBody?.applyForce(CGVector(dx: 0, dy: balloonLiftForce))
+        enumerateChildNodes(withName: "//balloon") { child, _ in
+            if self.stuckNodes[child] == nil {
+                child.physicsBody?.applyForce(CGVector(dx: 0, dy: self.balloonLiftForce))
+            }
+        }
+
+        // Collect all dynamic emoji nodes (from both scene and bloom container)
+        var allEmoji: [SKNode] = []
+        for child in children where (child.name == "coin" || child.name == "junk" || child.name == "balloon") {
+            allEmoji.append(child)
+        }
+        if let bloom = bloomEffectNode {
+            for child in bloom.children where (child.name == "coin" || child.name == "junk" || child.name == "balloon") {
+                allEmoji.append(child)
             }
         }
 
         // Exit boost — when an item clears the jar top, give it a satisfying fling
-        for child in children {
+        for child in allEmoji {
             guard let pb = child.physicsBody, pb.isDynamic else { continue }
-            guard child.name == "junk" || child.name == "balloon" || child.name == "coin" else { continue }
+
+            // Convert position to scene coordinates for nodes inside bloom container
+            let scenePos: CGPoint
+            if child.parent === bloomEffectNode {
+                scenePos = convert(child.position, from: bloomEffectNode!)
+            } else {
+                scenePos = child.position
+            }
 
             let id = ObjectIdentifier(child)
-            if child.position.y > jarTopY + 10, !boostedNodes.contains(id) {
+            if scenePos.y > jarTopY + 10, !boostedNodes.contains(id) {
                 boostedNodes.insert(id)
                 // Amplify existing velocity direction for a "whoosh" effect
                 let vx = pb.velocity.dx
@@ -777,16 +1003,23 @@ class GameScene: SKScene {
         var removedCoins = 0
         var removedBalloons = 0
 
-        for child in children {
+        for child in allEmoji {
             guard child.physicsBody != nil else { continue }
-            guard child.name == "coin" || child.name == "junk" || child.name == "balloon" else { continue }
+
+            // Convert position to scene coordinates
+            let scenePos: CGPoint
+            if child.parent === bloomEffectNode {
+                scenePos = convert(child.position, from: bloomEffectNode!)
+            } else {
+                scenePos = child.position
+            }
 
             // Remove items that have escaped the scene bounds (fell out of jar).
             let outOfBounds =
-                child.position.y < frame.minY - 100 ||
-                child.position.y > frame.maxY + 100 ||
-                child.position.x < frame.minX - 100 ||
-                child.position.x > frame.maxX + 100
+                scenePos.y < frame.minY - 100 ||
+                scenePos.y > frame.maxY + 100 ||
+                scenePos.x < frame.minX - 100 ||
+                scenePos.x > frame.maxX + 100
 
             if outOfBounds {
                 if child.name == "junk" {
@@ -817,8 +1050,11 @@ class GameScene: SKScene {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             #endif
 
-            // Check if all coins are gone
-            let remainingCoins = children.filter { $0.name == "coin" }
+            // Check if all coins are gone (in both scene and bloom container)
+            var remainingCoins: [SKNode] = children.filter { $0.name == "coin" }
+            if let bloom = bloomEffectNode {
+                remainingCoins.append(contentsOf: bloom.children.filter { $0.name == "coin" })
+            }
             if remainingCoins.isEmpty {
                 gameOver = true
                 viewModel?.gameEnded()
@@ -837,7 +1073,11 @@ class GameScene: SKScene {
     // MARK: - Win / Game Over
 
     private func checkWinCondition() {
-        let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" }
+        // Collect junk/balloon from both scene and bloom container
+        var junkNodes: [SKNode] = children.filter { $0.name == "junk" || $0.name == "balloon" }
+        if let bloom = bloomEffectNode {
+            junkNodes.append(contentsOf: bloom.children.filter { $0.name == "junk" || $0.name == "balloon" })
+        }
 
         // Stage clear: all junk and balloons gone, coins still inside
         if junkNodes.isEmpty {
@@ -848,7 +1088,12 @@ class GameScene: SKScene {
     }
 
     private func showWinEffect() {
-        let coinNodes = children.filter { $0.name == "coin" }
+        // Collect coins from both scene and bloom container
+        var coinNodes: [SKNode] = children.filter { $0.name == "coin" }
+        if let bloom = bloomEffectNode {
+            coinNodes.append(contentsOf: bloom.children.filter { $0.name == "coin" })
+        }
+
         for coin in coinNodes {
             coin.run(.repeatForever(.sequence([
                 .scale(to: 1.3, duration: 0.3),
@@ -893,7 +1138,13 @@ class GameScene: SKScene {
         }
 
         for coin in coinNodes {
-            sparkleEffect(at: coin.position)
+            let scenePos: CGPoint
+            if coin.parent === bloomEffectNode {
+                scenePos = convert(coin.position, from: bloomEffectNode!)
+            } else {
+                scenePos = coin.position
+            }
+            sparkleEffect(at: scenePos)
         }
 
         #if os(iOS)
@@ -931,10 +1182,19 @@ class GameScene: SKScene {
     // MARK: - Stage Transition
 
     private func startNextStage() {
-        // Remove all emoji, web, and banner nodes
+        // Remove all emoji, web, and banner nodes from scene
         children.filter {
             $0.name == "coin" || $0.name == "junk" || $0.name == "balloon" ||
             $0.name == "banner" || $0.name == "web"
+        }
+        .forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
+
+        // Also remove emoji from the bloom container
+        bloomEffectNode?.children.filter {
+            $0.name == "coin" || $0.name == "junk" || $0.name == "balloon"
         }
         .forEach { node in
             node.removeAllActions()
@@ -977,7 +1237,7 @@ class GameScene: SKScene {
     }
 }
 
-// MARK: - Contact Delegate (coin-wall haptics)
+// MARK: - Contact Delegate (collision haptics + impact flash)
 extension GameScene: SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
@@ -1004,13 +1264,14 @@ extension GameScene: SKPhysicsContactDelegate {
             return
         }
 
-        // --- Coin-wall haptics (.heavy) ---
+        let impulse = contact.collisionImpulse
+        let now = CACurrentMediaTime()
+
+        // --- Coin-wall haptics (.heavy) + impact flash ---
         let coinHitWall = (a == PhysicsCategory.coin && b == PhysicsCategory.wall) ||
                           (a == PhysicsCategory.wall && b == PhysicsCategory.coin)
 
         if coinHitWall {
-            let impulse = contact.collisionImpulse
-            let now = CACurrentMediaTime()
             #if os(iOS)
             if impulse > 3.0, now - lastHapticTime > 0.15 {
                 lastHapticTime = now
@@ -1021,27 +1282,26 @@ extension GameScene: SKPhysicsContactDelegate {
             #endif
         }
 
-        // --- Junk-wall haptics (.light) ---
+        // --- Junk-wall haptics (.light) + impact flash ---
         let junkHitWall = (a == PhysicsCategory.junk && b == PhysicsCategory.wall) ||
                           (a == PhysicsCategory.wall && b == PhysicsCategory.junk)
 
         if junkHitWall {
             #if os(iOS)
-            let impulse = contact.collisionImpulse
-            let now = CACurrentMediaTime()
             if impulse > 2.0, now - lastHapticTime > 0.12 {
                 lastHapticTime = now
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                let intensity = min(CGFloat(impulse) / 10.0, 1.0)
+                wallImpactGenerator.impactOccurred(intensity: intensity)
+                wallImpactGenerator.prepare()
             }
             #endif
         }
 
-        // --- Squash & stretch on wall impact (balloons only) ---
+        // --- Squash & stretch on wall impact (balloons only) + impact flash ---
         let balloonHitWall = (a == PhysicsCategory.balloon && b == PhysicsCategory.wall) ||
                              (a == PhysicsCategory.wall && b == PhysicsCategory.balloon)
 
         if balloonHitWall {
-            let impulse = contact.collisionImpulse
             guard impulse > 2.0 else { return }
 
             let node: SKNode?
@@ -1073,8 +1333,13 @@ extension GameScene: SKPhysicsContactDelegate {
                 ])
             }
             node.run(action, withKey: "squash")
+
+            #if os(iOS)
+            if impulse > 3.0, now - lastHapticTime > 0.15 {
+                lastHapticTime = now
+                wallImpactGenerator.impactOccurred(intensity: min(CGFloat(impulse) / 12.0, 1.0))
+            }
+            #endif
         }
     }
 }
-
-
