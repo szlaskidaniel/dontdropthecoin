@@ -112,7 +112,7 @@ struct GameHUD: View {
     }
 
     private var scoreFontSize: CGFloat {
-        isScoreExpanded ? 52 : 24
+        isScoreExpanded ? 40 : 24
     }
 
     private var scoreHorizontalPadding: CGFloat {
