@@ -348,12 +348,16 @@ class GameScene: SKScene {
     private let gravityStrength: CGFloat = 14.0
     private let balloonLiftForce: CGFloat = 6.0
 
-    /// Jar geometry (set once in buildJar).
+    /// Jar geometry (synchronised from VesselGeometry in buildJar).
     private var jarMinX: CGFloat = 0
     private var jarMaxX: CGFloat = 0
     private var jarBottomY: CGFloat = 0
     private var jarTopY: CGFloat = 0
     private var jarPath: CGMutablePath?
+
+    /// Current vessel shape and its computed geometry.
+    private var currentVesselShape: VesselShape = BottleVessel()
+    private var currentGeometry: VesselGeometry?
 
     /// The primary light source for the scene.
     private var primaryLight: SKLightNode?
@@ -374,6 +378,7 @@ class GameScene: SKScene {
 
     private var stageWon = false
     private var gameOver = false
+    private var isTransitioningShape = false
     private var lastHapticTime: TimeInterval = 0
     private var crystalSpawnIndex: Int = 0
 
@@ -448,7 +453,7 @@ class GameScene: SKScene {
         // --- Jar-only rasterized effect node ---
         setupJarEffectNode()
 
-        buildJar()
+        buildJar(shape: VesselShapeRegistry.shape(forStage: 1))
         spawnAmbientBackgroundItems()
         startMotion()
     }
@@ -471,6 +476,14 @@ class GameScene: SKScene {
         crystalSpawnIndex = 0
         stageWon = false
         gameOver = false
+        isTransitioningShape = false
+
+        // Rebuild jar for stage 1 shape if the previous game ended at a different shape.
+        let stage1Shape = VesselShapeRegistry.shape(forStage: 1)
+        if stage1Shape.name != currentVesselShape.name {
+            teardownJar()
+            buildJar(shape: stage1Shape)
+        }
 
         fillJar()
     }
@@ -532,68 +545,61 @@ class GameScene: SKScene {
 
     // MARK: - Jar Construction
 
-    private func buildJar() {
-        let bodyW   = frame.width * 0.78
-        let neckW   = bodyW * 0.38         // narrow neck opening
-        let h       = frame.height * 0.55
-        let neckH   = h * 0.36             // neck height (top portion)
-        let cx      = frame.midX
-        let by      = frame.minY + 70
+    /// Removes all jar-related nodes so the jar can be rebuilt with a new shape.
+    /// Does NOT remove `jarEffectNode` itself — only its children.
+    private func teardownJar() {
+        // Physics nodes
+        childNode(withName: "wall")?.removeFromParent()
+        childNode(withName: "ambientWall")?.removeFromParent()
 
-        jarMinX    = cx - bodyW / 2
-        jarMaxX    = cx + bodyW / 2
-        jarBottomY = by
-        jarTopY    = by + h
+        // Ambient background items (they reference the old ambientWall)
+        children.filter {
+            $0.name == "ambientCrystal" || $0.name == "ambientEmoji"
+        }.forEach { $0.removeFromParent() }
 
-        let shoulderY = jarTopY - neckH    // where neck begins to narrow
-        let neckMinX  = cx - neckW / 2
-        let neckMaxX  = cx + neckW / 2
+        // Back wall crop node
+        childNode(withName: "jarBackWallCrop")?.removeFromParent()
 
-        // Corner radius for the bottom of the body
-        let bodyCornerR: CGFloat = 28
+        // Visual root (all layers inside jarEffectNode)
+        jarEffectNode?.removeAllChildren()
 
-        // Build the jar as a smooth bottle-shaped edge-chain (open top).
-        let path = CGMutablePath()
+        // Reflection emitter
+        childNode(withName: "jarReflectionEmitter")?.removeFromParent()
 
-        // Start at left neck opening
-        path.move(to: CGPoint(x: neckMinX, y: jarTopY))
+        // Dirt overlays
+        for node in dirtNodes { node.removeFromParent() }
+        dirtNodes.removeAll()
 
-        // Left side: smooth S-curve from neck down to body
-        path.addCurve(
-            to: CGPoint(x: jarMinX, y: shoulderY - 30),
-            control1: CGPoint(x: neckMinX, y: shoulderY + 20),
-            control2: CGPoint(x: jarMinX, y: shoulderY + 10)
+        // Clear geometry cache
+        jarPath = nil
+        currentGeometry = nil
+    }
+
+    private func buildJar(shape: VesselShape) {
+        currentVesselShape = shape
+        let geometry = shape.buildGeometry(
+            frameWidth: frame.width,
+            frameHeight: frame.height
         )
+        currentGeometry = geometry
 
-        // Left body wall straight down to bottom-left corner
-        path.addLine(to: CGPoint(x: jarMinX, y: by + bodyCornerR))
+        // Synchronise legacy jar variables used throughout the scene.
+        jarMinX    = geometry.minX
+        jarMaxX    = geometry.maxX
+        jarBottomY = geometry.bottomY
+        jarTopY    = geometry.topY
+        jarPath    = geometry.path
 
-        // Bottom-left rounded corner
-        path.addQuadCurve(
-            to: CGPoint(x: jarMinX + bodyCornerR, y: by),
-            control: CGPoint(x: jarMinX, y: by)
-        )
-
-        // Floor
-        path.addLine(to: CGPoint(x: jarMaxX - bodyCornerR, y: by))
-
-        // Bottom-right rounded corner
-        path.addQuadCurve(
-            to: CGPoint(x: jarMaxX, y: by + bodyCornerR),
-            control: CGPoint(x: jarMaxX, y: by)
-        )
-
-        // Right body wall straight up to shoulder region
-        path.addLine(to: CGPoint(x: jarMaxX, y: shoulderY - 30))
-
-        // Right side: smooth S-curve from body up to neck
-        path.addCurve(
-            to: CGPoint(x: neckMaxX, y: jarTopY),
-            control1: CGPoint(x: jarMaxX, y: shoulderY + 10),
-            control2: CGPoint(x: neckMaxX, y: shoulderY + 20)
-        )
-
-        jarPath = path
+        let path       = geometry.path
+        let shoulderY  = geometry.shoulderY
+        let neckMinX   = geometry.neckMinX
+        let neckMaxX   = geometry.neckMaxX
+        let neckH      = geometry.neckHeight
+        let bodyCornerR = geometry.bodyCornerRadius
+        let bodyW      = geometry.bodyWidth
+        let cx         = geometry.centerX
+        let by         = geometry.bottomY
+        let h          = geometry.height
 
         // Physics body
         let jarNode = SKNode()
@@ -660,6 +666,7 @@ class GameScene: SKScene {
         backWall.shadowCastBitMask = 0
 
         let backWallCropNode = SKCropNode()
+        backWallCropNode.name = "jarBackWallCrop"
         backWallCropNode.zPosition = -5
         backWallCropNode.maskNode = backWallMask
         backWallCropNode.addChild(backWall)
@@ -718,72 +725,50 @@ class GameScene: SKScene {
         // --- Layer 3c: Inner rim light (glass thickness cue) ---
         // Keep this on the shoulders/sides only so the floor doesn't get bright artifacts.
         let innerRimOffset: CGFloat = 8.0
-        let lowerRimY = by + bodyCornerR + 20
 
-        let leftInnerRimPath = CGMutablePath()
-        leftInnerRimPath.move(to: CGPoint(x: neckMinX + innerRimOffset, y: jarTopY - 1))
-        leftInnerRimPath.addCurve(
-            to: CGPoint(x: jarMinX + innerRimOffset, y: shoulderY - 30),
-            control1: CGPoint(x: neckMinX + innerRimOffset, y: shoulderY + 20),
-            control2: CGPoint(x: jarMinX + innerRimOffset, y: shoulderY + 10)
-        )
-        leftInnerRimPath.addLine(to: CGPoint(x: jarMinX + innerRimOffset, y: lowerRimY))
+        if let leftRimPath = shape.leftInnerRimPath(geometry: geometry, offset: innerRimOffset) {
+            let leftInnerRim = SKShapeNode(path: leftRimPath)
+            leftInnerRim.name = "jarInnerRimLight"
+            leftInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
+            leftInnerRim.lineWidth = 1.4
+            leftInnerRim.lineCap = .round
+            leftInnerRim.lineJoin = .round
+            leftInnerRim.fillColor = .clear
+            leftInnerRim.glowWidth = 1.8
+            leftInnerRim.isAntialiased = true
+            leftInnerRim.zPosition = 1
+            glowEffectsNode.addChild(leftInnerRim)
+        }
 
-        let rightInnerRimPath = CGMutablePath()
-        rightInnerRimPath.move(to: CGPoint(x: neckMaxX - innerRimOffset, y: jarTopY - 1))
-        rightInnerRimPath.addCurve(
-            to: CGPoint(x: jarMaxX - innerRimOffset, y: shoulderY - 30),
-            control1: CGPoint(x: neckMaxX - innerRimOffset, y: shoulderY + 20),
-            control2: CGPoint(x: jarMaxX - innerRimOffset, y: shoulderY + 10)
-        )
-        rightInnerRimPath.addLine(to: CGPoint(x: jarMaxX - innerRimOffset, y: lowerRimY))
-
-        let leftInnerRim = SKShapeNode(path: leftInnerRimPath)
-        leftInnerRim.name = "jarInnerRimLight"
-        leftInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
-        leftInnerRim.lineWidth = 1.4
-        leftInnerRim.lineCap = .round
-        leftInnerRim.lineJoin = .round
-        leftInnerRim.fillColor = .clear
-        leftInnerRim.glowWidth = 1.8
-        leftInnerRim.isAntialiased = true
-        leftInnerRim.zPosition = 1
-        glowEffectsNode.addChild(leftInnerRim)
-
-        let rightInnerRim = SKShapeNode(path: rightInnerRimPath)
-        rightInnerRim.name = "jarInnerRimLight"
-        rightInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
-        rightInnerRim.lineWidth = 1.4
-        rightInnerRim.lineCap = .round
-        rightInnerRim.lineJoin = .round
-        rightInnerRim.fillColor = .clear
-        rightInnerRim.glowWidth = 1.8
-        rightInnerRim.isAntialiased = true
-        rightInnerRim.zPosition = 1
-        glowEffectsNode.addChild(rightInnerRim)
+        if let rightRimPath = shape.rightInnerRimPath(geometry: geometry, offset: innerRimOffset) {
+            let rightInnerRim = SKShapeNode(path: rightRimPath)
+            rightInnerRim.name = "jarInnerRimLight"
+            rightInnerRim.strokeColor = SKColor(white: 1.0, alpha: 0.24)
+            rightInnerRim.lineWidth = 1.4
+            rightInnerRim.lineCap = .round
+            rightInnerRim.lineJoin = .round
+            rightInnerRim.fillColor = .clear
+            rightInnerRim.glowWidth = 1.8
+            rightInnerRim.isAntialiased = true
+            rightInnerRim.zPosition = 1
+            glowEffectsNode.addChild(rightInnerRim)
+        }
 
         // --- Layer 4: Left-side highlight (light reflection) ---
-        let hlPath = CGMutablePath()
         let hlOff: CGFloat = 3  // inset from the main outline
-        hlPath.move(to: CGPoint(x: neckMinX + hlOff, y: jarTopY))
-        hlPath.addCurve(
-            to: CGPoint(x: jarMinX + hlOff, y: shoulderY - 30),
-            control1: CGPoint(x: neckMinX + hlOff, y: shoulderY + 20),
-            control2: CGPoint(x: jarMinX + hlOff, y: shoulderY + 10)
-        )
-        hlPath.addLine(to: CGPoint(x: jarMinX + hlOff, y: by + bodyCornerR))
-
-        let highlight = SKShapeNode(path: hlPath)
-        highlight.name        = "jarLayer"
-        highlight.strokeColor = SKColor(white: 1, alpha: 0.15)
-        highlight.lineWidth   = 1.5
-        highlight.lineCap     = .round
-        highlight.lineJoin    = .round
-        highlight.fillColor   = .clear
-        highlight.glowWidth   = 1.0
-        highlight.isAntialiased = true
-        highlight.zPosition   = 3
-        jarVisualRoot.addChild(highlight)
+        if let hlPath = shape.leftHighlightPath(geometry: geometry, offset: hlOff) {
+            let highlight = SKShapeNode(path: hlPath)
+            highlight.name        = "jarLayer"
+            highlight.strokeColor = SKColor(white: 1, alpha: 0.15)
+            highlight.lineWidth   = 1.5
+            highlight.lineCap     = .round
+            highlight.lineJoin    = .round
+            highlight.fillColor   = .clear
+            highlight.glowWidth   = 1.0
+            highlight.isAntialiased = true
+            highlight.zPosition   = 3
+            jarVisualRoot.addChild(highlight)
+        }
 
         // --- Layer 5: Static specular sheen on upper shoulder ---
         let sheenSize = CGSize(width: bodyW * 0.24, height: h * 0.14)
@@ -1932,7 +1917,7 @@ class GameScene: SKScene {
     // MARK: - Update
 
     override func update(_ currentTime: TimeInterval) {
-        guard isGameplayActive, !stageWon, !gameOver else { return }
+        guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
 
         // Timer ran out — game over
@@ -2336,27 +2321,8 @@ class GameScene: SKScene {
     /// accounting for the bottle shape (wide body narrowing into a neck).
     /// Returns 0 if `y` is outside the jar vertically.
     private func jarHalfWidthAt(y: CGFloat) -> CGFloat {
-        guard y >= jarBottomY, y <= jarTopY else { return 0 }
-        let jarW = jarMaxX - jarMinX
-        let jarH = jarTopY - jarBottomY
-        let bodyHalf = jarW / 2
-        let neckHalf = jarW * 0.38 / 2
-        let shoulderY = jarTopY - jarH * 0.36
-
-        if y <= shoulderY {
-            // Body region — full width (inset slightly for corner radius at very bottom)
-            let cornerR: CGFloat = 28
-            if y < jarBottomY + cornerR {
-                let t = (y - jarBottomY) / cornerR
-                return bodyHalf - cornerR * (1.0 - sqrt(max(0, 1.0 - (1.0 - t) * (1.0 - t))))
-            }
-            return bodyHalf
-        } else {
-            // Neck/shoulder region — interpolate from body width to neck width via smooth curve
-            let t = (y - shoulderY) / (jarTopY - shoulderY)
-            let smooth = t * t * (3.0 - 2.0 * t) // smoothstep
-            return bodyHalf + (neckHalf - bodyHalf) * smooth
-        }
+        guard let geometry = currentGeometry else { return 0 }
+        return currentVesselShape.halfWidthAt(y: y, geometry: geometry)
     }
 
     /// Generates a random point guaranteed to be inside the jar silhouette.
@@ -2535,9 +2501,38 @@ class GameScene: SKScene {
         stuckNodes.removeAll()
         boostedNodes.removeAll()
         crystalSpawnIndex = 0
+
+        let oldStage = stage
         viewModel?.nextStage()
+        let newStage = stage
         stageWon = false
-        fillJar()
+
+        // Check if the vessel shape changes at this stage boundary.
+        if VesselShapeRegistry.shapeChanges(from: oldStage, to: newStage) {
+            let newShape = VesselShapeRegistry.shape(forStage: newStage)
+            isTransitioningShape = true
+
+            // Fade out the jar visuals, rebuild with the new shape, then fade in.
+            let fadeOut = SKAction.fadeAlpha(to: 0, duration: 0.3)
+            let fadeIn = SKAction.fadeAlpha(to: 1, duration: 0.3)
+
+            jarEffectNode?.run(fadeOut) { [weak self] in
+                guard let self else { return }
+                self.teardownJar()
+                self.buildJar(shape: newShape)
+                self.jarEffectNode?.alpha = 0
+                self.jarEffectNode?.run(fadeIn)
+            }
+
+            // Delay item spawning so the new jar is visible first.
+            run(.wait(forDuration: 0.65)) { [weak self] in
+                guard let self else { return }
+                self.isTransitioningShape = false
+                self.fillJar()
+            }
+        } else {
+            fillJar()
+        }
     }
 
     // MARK: - Particle Effects

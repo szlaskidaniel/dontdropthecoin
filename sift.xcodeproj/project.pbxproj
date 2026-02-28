@@ -21,6 +21,12 @@
 				GameScene.sks,
 				GameScene.swift,
 				GameViewModel.swift,
+				Vessels/BeakerVessel.swift,
+				Vessels/BottleVessel.swift,
+				Vessels/ErlenmeyerVessel.swift,
+				Vessels/RoundFlaskVessel.swift,
+				Vessels/TallFlaskVessel.swift,
+				Vessels/VesselShape.swift,
 			);
 			target = 656A01902F50A0A8004BCF72 /* sift iOS */;
 		};
