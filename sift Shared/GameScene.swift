@@ -236,17 +236,10 @@ void main() {
     float edgeDist = length(centered);
     float innerGlow = smoothstep(0.6, 1.0, edgeDist) * 0.06;
 
-    // Specular sheen on the upper shoulder (top 20% of the shape, narrow band)
-    float sheenY = smoothstep(0.72, 0.88, uv.y) * (1.0 - smoothstep(0.88, 0.95, uv.y));
-    float sheenX = smoothstep(0.0, 0.4, 1.0 - abs(centered.x));
-    float sheen = sheenY * sheenX * 0.12;
-
-    // Combine: cyan-magenta gemstone edge glow + faint white specular highlight
     // The center of the jar must be fully transparent so objects inside are visible
     vec4 glowColor = vec4(0.3, 0.85, 0.9, 1.0) * innerGlow;
-    vec4 sheenColor = vec4(0.9, 0.6, 1.0, 1.0) * sheen;
 
-    gl_FragColor = glowColor + sheenColor;
+    gl_FragColor = glowColor;
 }
 """
 
@@ -834,20 +827,7 @@ class GameScene: SKScene {
             jarVisualRoot.addChild(highlight)
         }
 
-        // --- Layer 5: Static specular sheen on upper shoulder ---
-        let sheenSize = CGSize(width: bodyW * 0.24, height: h * 0.14)
-        let sheen = SKSpriteNode(texture: makeCrescentSheenTexture(size: sheenSize), size: sheenSize)
-        sheen.name = "jarSpecularSheen"
-        sheen.position = CGPoint(
-            x: cx - bodyW * 0.12,
-            y: shoulderY + neckH * 0.34
-        )
-        sheen.alpha = 0.34
-        sheen.blendMode = .add
-        sheen.zPosition = 2
-        glowEffectsNode.addChild(sheen)
-
-        // --- Layer 6: Ambient occlusion in lower inner corners ---
+        // --- Layer 5: Ambient occlusion in lower inner corners ---
         let aoSize = CGSize(width: bodyCornerR * 1.9, height: bodyCornerR * 1.6)
         let leftAO = SKSpriteNode(texture: makeAmbientOcclusionSpotTexture(size: aoSize), size: aoSize)
         leftAO.name = "jarAmbientOcclusionLeft"
@@ -1407,68 +1387,6 @@ class GameScene: SKScene {
 
         var fromOrigin = CGAffineTransform(translationX: center.x, y: center.y)
         return scaledPath.copy(using: &fromOrigin) ?? path
-    }
-
-    /// Creates a fixed partial crescent highlight texture for a static glass reflection.
-    private func makeCrescentSheenTexture(size: CGSize) -> SKTexture {
-        let width = max(Int(size.width), 4)
-        let height = max(Int(size.height), 4)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-
-        guard let ctx = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return SKTexture() }
-
-        let rect = CGRect(origin: .zero, size: CGSize(width: width, height: height))
-        let outer = rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.08)
-        let inner = outer
-            .insetBy(dx: outer.width * 0.14, dy: outer.height * 0.18)
-            .offsetBy(dx: outer.width * 0.20, dy: outer.height * 0.02)
-
-        let crescentPath = CGMutablePath()
-        crescentPath.addEllipse(in: outer)
-        crescentPath.addEllipse(in: inner)
-
-        // Keep only a shoulder segment so the highlight does not read as an "eye" ring.
-        let segmentRect = CGRect(
-            x: rect.minX,
-            y: rect.height * 0.30,
-            width: rect.width * 0.76,
-            height: rect.height * 0.56
-        )
-
-        ctx.saveGState()
-        ctx.clip(to: segmentRect)
-        ctx.addPath(crescentPath)
-        ctx.clip(using: .evenOdd)
-
-        let components: [CGFloat] = [
-            1.0, 1.0, 1.0, 0.42,
-            1.0, 1.0, 1.0, 0.03
-        ]
-        if let gradient = CGGradient(
-            colorSpace: colorSpace,
-            colorComponents: components,
-            locations: [0.0, 1.0],
-            count: 2
-        ) {
-            ctx.drawLinearGradient(
-                gradient,
-                start: CGPoint(x: segmentRect.minX, y: segmentRect.maxY),
-                end: CGPoint(x: segmentRect.maxX, y: segmentRect.minY),
-                options: [.drawsAfterEndLocation]
-            )
-        }
-        ctx.restoreGState()
-
-        guard let image = ctx.makeImage() else { return SKTexture() }
-        return SKTexture(cgImage: image)
     }
 
     /// Creates a subtle radial dark spot used for ambient occlusion near glass corners.
@@ -2732,19 +2650,9 @@ class GameScene: SKScene {
             morphHighlightNode?.path = hlPath
         }
 
-        // Reposition specular sheen.
+        // Reposition AO spots.
         if let glowNode = jarEffectNode?.childNode(withName: "jarVisualRoot")?
             .childNode(withName: "jarGlowEffectsNode") {
-            if let sheen = glowNode.childNode(withName: "jarSpecularSheen") as? SKSpriteNode {
-                let sheenSize = CGSize(width: geometry.bodyWidth * 0.24, height: geometry.height * 0.14)
-                sheen.size = sheenSize
-                sheen.position = CGPoint(
-                    x: geometry.centerX - geometry.bodyWidth * 0.12,
-                    y: geometry.shoulderY + geometry.neckHeight * 0.34
-                )
-            }
-
-            // Reposition AO spots.
             if let leftAO = glowNode.childNode(withName: "jarAmbientOcclusionLeft") as? SKSpriteNode {
                 let aoSize = CGSize(width: geometry.bodyCornerRadius * 1.9, height: geometry.bodyCornerRadius * 1.6)
                 leftAO.size = aoSize
