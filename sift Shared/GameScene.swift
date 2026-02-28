@@ -662,8 +662,6 @@ class GameScene: SKScene {
         jarPath    = geometry.path
 
         let path       = geometry.path
-        let shoulderY  = geometry.shoulderY
-        let neckH      = geometry.neckHeight
         let bodyCornerR = geometry.bodyCornerRadius
         let bodyW      = geometry.bodyWidth
         let cx         = geometry.centerX
