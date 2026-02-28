@@ -2311,7 +2311,7 @@ class GameScene: SKScene {
         let isPerfectStage = viewModel?.wasPerfectStage ?? false
 
         // Victory banner
-        let banner = SKLabelNode(text: isPerfectStage ? "Perfect Level!" : "Stage Clear!")
+        let banner = SKLabelNode(text: isPerfectStage ? "PERFECT LEVEL!" : "STAGE CLEAR!")
         banner.name       = "banner"
         banner.fontName   = "SFProRounded-Heavy"
         banner.fontSize   = 44
@@ -2333,7 +2333,7 @@ class GameScene: SKScene {
         ]))
 
         if isPerfectStage {
-            let perfectLabel = SKLabelNode(text: "No gems lost")
+            let perfectLabel = SKLabelNode(text: "NO GEMS LOST")
             perfectLabel.name = "banner"
             perfectLabel.fontName = "SFProRounded-Bold"
             perfectLabel.fontSize = 24
@@ -2457,7 +2457,7 @@ class GameScene: SKScene {
     private func showGameOverEffect() {
         let center = CGPoint(x: frame.midX, y: frame.midY + 120)
 
-        let glow = SKLabelNode(text: "Game Over")
+        let glow = SKLabelNode(text: "GAME OVER")
         glow.name       = "banner"
         glow.fontName   = "SFProRounded-Heavy"
         glow.fontSize   = 62
@@ -2468,7 +2468,7 @@ class GameScene: SKScene {
         glow.setScale(0.5)
         addChild(glow)
 
-        let shadow = SKLabelNode(text: "Game Over")
+        let shadow = SKLabelNode(text: "GAME OVER")
         shadow.name       = "banner"
         shadow.fontName   = "SFProRounded-Heavy"
         shadow.fontSize   = 60
