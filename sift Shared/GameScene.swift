@@ -592,8 +592,6 @@ class GameScene: SKScene {
 
         let path       = geometry.path
         let shoulderY  = geometry.shoulderY
-        let neckMinX   = geometry.neckMinX
-        let neckMaxX   = geometry.neckMaxX
         let neckH      = geometry.neckHeight
         let bodyCornerR = geometry.bodyCornerRadius
         let bodyW      = geometry.bodyWidth

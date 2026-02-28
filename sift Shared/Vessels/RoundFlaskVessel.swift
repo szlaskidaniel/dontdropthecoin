@@ -26,8 +26,7 @@ struct RoundFlaskVessel: VesselShape {
         // The "corner radius" is effectively the whole bottom half of the sphere.
         let bodyCornerR: CGFloat = bodyW / 2
 
-        // Sphere center and radius
-        let bodyH = shoulderY - by
+        // Sphere center and radius        
         let sphereR = bodyW / 2
         let sphereCY = by + sphereR  // center of the spherical region
 
