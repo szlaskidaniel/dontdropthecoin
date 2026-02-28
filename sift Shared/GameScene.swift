@@ -6,6 +6,7 @@
 import SpriteKit
 import CoreImage
 import simd
+import AVFoundation
 
 #if os(iOS)
 import CoreMotion
@@ -339,6 +340,8 @@ class GameScene: SKScene {
 
     weak var viewModel: GameViewModel?
 
+    private var bgMusicPlayer: AVAudioPlayer?
+
     #if os(iOS)
     private let motionManager = CMMotionManager()
     private let crystalImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
@@ -379,6 +382,24 @@ class GameScene: SKScene {
     private var stageWon = false
     private var gameOver = false
     private var isTransitioningShape = false
+
+    // MARK: Vessel Morph
+    private var morphInterpolator: VesselMorphInterpolator?
+    private var morphProgress: CGFloat = 0
+    private var morphStartTime: TimeInterval = 0
+    private var isMorphing = false
+    private let morphDuration: TimeInterval = 1.2
+    private var morphOutlineNode: SKShapeNode?
+    private var morphInnerFillNode: SKShapeNode?
+    private var morphGlassFillNode: SKShapeNode?
+    private var morphOuterGlowNode: SKShapeNode?
+    private var morphLeftRimNode: SKShapeNode?
+    private var morphRightRimNode: SKShapeNode?
+    private var morphHighlightNode: SKShapeNode?
+    private var morphBackWallMask: SKShapeNode?
+    private var morphFrameCounter: Int = 0
+    private var lastPhysicsUpdateFrame: Int = 0
+
     private var lastHapticTime: TimeInterval = 0
     private var crystalSpawnIndex: Int = 0
 
@@ -407,6 +428,11 @@ class GameScene: SKScene {
 
     override func didMove(to view: SKView) {
         backgroundColor = .black
+
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
 
         view.ignoresSiblingOrder = true
         #if os(iOS)
@@ -456,6 +482,7 @@ class GameScene: SKScene {
         buildJar(shape: VesselShapeRegistry.shape(forStage: 1))
         spawnAmbientBackgroundItems()
         startMotion()
+        startBackgroundMusic()
     }
 
     /// Called from the UI when the player taps Start or Play Again.
@@ -478,6 +505,20 @@ class GameScene: SKScene {
         gameOver = false
         isTransitioningShape = false
 
+        // Cancel any in-progress morph.
+        if isMorphing {
+            isMorphing = false
+            morphInterpolator = nil
+            morphOutlineNode = nil
+            morphInnerFillNode = nil
+            morphGlassFillNode = nil
+            morphOuterGlowNode = nil
+            morphLeftRimNode = nil
+            morphRightRimNode = nil
+            morphHighlightNode = nil
+            morphBackWallMask = nil
+        }
+
         // Rebuild jar for stage 1 shape if the previous game ended at a different shape.
         let stage1Shape = VesselShapeRegistry.shape(forStage: 1)
         if stage1Shape.name != currentVesselShape.name {
@@ -492,6 +533,31 @@ class GameScene: SKScene {
         #if os(iOS)
         motionManager.stopDeviceMotionUpdates()
         #endif
+        stopBackgroundMusic()
+    }
+
+    // MARK: - Background Music
+
+    private func startBackgroundMusic() {
+        guard bgMusicPlayer == nil || bgMusicPlayer?.isPlaying == false else { return }
+
+        guard let url = Bundle.main.url(forResource: "bg_music", withExtension: "mp3") else { return }
+
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.numberOfLoops = -1 // loop indefinitely
+            player.volume = 0.4
+            player.prepareToPlay()
+            player.play()
+            bgMusicPlayer = player
+        } catch {
+            print("Background music failed to load: \(error)")
+        }
+    }
+
+    private func stopBackgroundMusic() {
+        bgMusicPlayer?.stop()
+        bgMusicPlayer = nil
     }
 
     // MARK: - Dynamic Lighting
@@ -672,7 +738,7 @@ class GameScene: SKScene {
 
         // --- Layer 1: Inner fill (depth tint) ---
         let innerFill = SKShapeNode(path: path)
-        innerFill.name        = "jarLayer"
+        innerFill.name        = "jarInnerFill"
         innerFill.strokeColor = .clear
         innerFill.fillColor   = SKColor(red: 0.4, green: 0.5, blue: 0.8, alpha: 0.04)
         innerFill.lineJoin    = .round
@@ -695,7 +761,7 @@ class GameScene: SKScene {
 
         // --- Layer 3: Main glass outline with gradient stroke shader ---
         let outline = SKShapeNode(path: path)
-        outline.name        = "jarLayer"
+        outline.name        = "jarOutline"
         outline.strokeColor = .white      // shader overrides this
         outline.lineWidth   = 3.5
         outline.lineCap     = .round
@@ -756,7 +822,7 @@ class GameScene: SKScene {
         let hlOff: CGFloat = 3  // inset from the main outline
         if let hlPath = shape.leftHighlightPath(geometry: geometry, offset: hlOff) {
             let highlight = SKShapeNode(path: hlPath)
-            highlight.name        = "jarLayer"
+            highlight.name        = "jarHighlight"
             highlight.strokeColor = SKColor(white: 1, alpha: 0.15)
             highlight.lineWidth   = 1.5
             highlight.lineCap     = .round
@@ -1915,6 +1981,11 @@ class GameScene: SKScene {
     // MARK: - Update
 
     override func update(_ currentTime: TimeInterval) {
+        // Drive the morph animation when active (even during isTransitioningShape).
+        if isMorphing {
+            updateMorph(currentTime: currentTime)
+            return
+        }
         guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
 
@@ -2509,28 +2580,257 @@ class GameScene: SKScene {
         if VesselShapeRegistry.shapeChanges(from: oldStage, to: newStage) {
             let newShape = VesselShapeRegistry.shape(forStage: newStage)
             isTransitioningShape = true
-
-            // Fade out the jar visuals, rebuild with the new shape, then fade in.
-            let fadeOut = SKAction.fadeAlpha(to: 0, duration: 0.3)
-            let fadeIn = SKAction.fadeAlpha(to: 1, duration: 0.3)
-
-            jarEffectNode?.run(fadeOut) { [weak self] in
-                guard let self else { return }
-                self.teardownJar()
-                self.buildJar(shape: newShape)
-                self.jarEffectNode?.alpha = 0
-                self.jarEffectNode?.run(fadeIn)
-            }
-
-            // Delay item spawning so the new jar is visible first.
-            run(.wait(forDuration: 0.65)) { [weak self] in
-                guard let self else { return }
-                self.isTransitioningShape = false
-                self.fillJar()
-            }
+            beginVesselMorph(to: newShape)
         } else {
             fillJar()
         }
+    }
+
+    // MARK: - Vessel Morph
+
+    private func beginVesselMorph(to newShape: VesselShape) {
+        guard let oldGeometry = currentGeometry else { return }
+
+        let newGeometry = newShape.buildGeometry(
+            frameWidth: frame.width,
+            frameHeight: frame.height
+        )
+
+        morphInterpolator = VesselMorphInterpolator(
+            fromShape: currentVesselShape,
+            toShape: newShape,
+            fromGeometry: oldGeometry,
+            toGeometry: newGeometry
+        )
+
+        // Cache references to visual nodes that need per-frame path updates.
+        cacheMorphVisualNodeReferences()
+
+        // Disable rasterization during animation for smooth per-frame updates.
+        jarEffectNode?.shouldRasterize = false
+        if let glowNode = jarEffectNode?
+            .childNode(withName: "jarVisualRoot")?
+            .childNode(withName: "jarGlowEffectsNode") as? SKEffectNode {
+            glowNode.shouldRasterize = false
+        }
+
+        // Remove dirt overlays and reflection emitter — rebuilt after morph.
+        for node in dirtNodes { node.removeFromParent() }
+        dirtNodes.removeAll()
+        childNode(withName: "jarReflectionEmitter")?.removeFromParent()
+
+        isMorphing = true
+        morphProgress = 0
+        morphStartTime = 0
+        morphFrameCounter = 0
+        lastPhysicsUpdateFrame = 0
+    }
+
+    private func cacheMorphVisualNodeReferences() {
+        guard let visualRoot = jarEffectNode?.childNode(withName: "jarVisualRoot") else { return }
+
+        morphInnerFillNode = visualRoot.childNode(withName: "jarInnerFill") as? SKShapeNode
+        morphGlassFillNode = visualRoot.childNode(withName: "jarGlass") as? SKShapeNode
+        morphOutlineNode = visualRoot.childNode(withName: "jarOutline") as? SKShapeNode
+        morphHighlightNode = visualRoot.childNode(withName: "jarHighlight") as? SKShapeNode
+
+        if let glowNode = visualRoot.childNode(withName: "jarGlowEffectsNode") {
+            morphOuterGlowNode = glowNode.childNode(withName: "jarOuterGlow") as? SKShapeNode
+            let rimNodes = glowNode.children
+                .filter { $0.name == "jarInnerRimLight" }
+                .compactMap { $0 as? SKShapeNode }
+            morphLeftRimNode = rimNodes.first
+            morphRightRimNode = rimNodes.count > 1 ? rimNodes[1] : nil
+        }
+
+        morphBackWallMask = (childNode(withName: "jarBackWallCrop") as? SKCropNode)?
+            .maskNode as? SKShapeNode
+    }
+
+    private func updateMorph(currentTime: TimeInterval) {
+        guard let interpolator = morphInterpolator else { return }
+
+        if morphStartTime == 0 { morphStartTime = currentTime }
+
+        let elapsed = currentTime - morphStartTime
+        let rawT = CGFloat(elapsed / morphDuration)
+
+        // Ease-in-out cubic for smooth glass-reshaping feel.
+        let t = min(1.0, easeInOutCubic(max(0, rawT)))
+        morphProgress = t
+
+        let geometry = interpolator.interpolatedGeometry(at: t)
+
+        // Update visual layers.
+        updateVisualLayersForMorph(geometry: geometry, interpolator: interpolator, t: t)
+
+        // Update physics bodies (throttled).
+        updatePhysicsForMorph(path: geometry.path)
+
+        // Sync legacy jar variables.
+        jarMinX = geometry.minX
+        jarMaxX = geometry.maxX
+        jarBottomY = geometry.bottomY
+        jarTopY = geometry.topY
+        jarPath = geometry.path
+
+        if rawT >= 1.0 {
+            finalizeMorph()
+        }
+    }
+
+    private func easeInOutCubic(_ t: CGFloat) -> CGFloat {
+        if t < 0.5 {
+            return 4 * t * t * t
+        } else {
+            let f = 2 * t - 2
+            return 0.5 * f * f * f + 1
+        }
+    }
+
+    private func updateVisualLayersForMorph(
+        geometry: VesselGeometry,
+        interpolator: VesselMorphInterpolator,
+        t: CGFloat
+    ) {
+        let path = geometry.path
+
+        // Shape nodes that follow the main vessel path.
+        morphInnerFillNode?.path = path
+        morphGlassFillNode?.path = path
+        morphOutlineNode?.path = path
+        morphOuterGlowNode?.path = path
+
+        // Back wall mask needs a closed version of the path.
+        let closedPath = CGMutablePath()
+        closedPath.addPath(path)
+        closedPath.closeSubpath()
+        morphBackWallMask?.path = closedPath
+
+        // Reposition the back wall sprite inside its crop node.
+        if let cropNode = childNode(withName: "jarBackWallCrop") as? SKCropNode,
+           let backWall = cropNode.children.first as? SKSpriteNode {
+            backWall.size = CGSize(width: geometry.bodyWidth + 20, height: geometry.height + 20)
+            backWall.position = CGPoint(
+                x: geometry.centerX,
+                y: geometry.bottomY + geometry.height / 2
+            )
+        }
+
+        // Inner rim paths.
+        let rimOffset: CGFloat = 8.0
+        if let rimPath = interpolator.interpolatedLeftRimPath(at: t, geometry: geometry, offset: rimOffset) {
+            morphLeftRimNode?.path = rimPath
+        }
+        if let rimPath = interpolator.interpolatedRightRimPath(at: t, geometry: geometry, offset: rimOffset) {
+            morphRightRimNode?.path = rimPath
+        }
+
+        // Left highlight path.
+        let hlOffset: CGFloat = 3.0
+        if let hlPath = interpolator.interpolatedLeftHighlightPath(at: t, geometry: geometry, offset: hlOffset) {
+            morphHighlightNode?.path = hlPath
+        }
+
+        // Reposition specular sheen.
+        if let glowNode = jarEffectNode?.childNode(withName: "jarVisualRoot")?
+            .childNode(withName: "jarGlowEffectsNode") {
+            if let sheen = glowNode.childNode(withName: "jarSpecularSheen") as? SKSpriteNode {
+                let sheenSize = CGSize(width: geometry.bodyWidth * 0.24, height: geometry.height * 0.14)
+                sheen.size = sheenSize
+                sheen.position = CGPoint(
+                    x: geometry.centerX - geometry.bodyWidth * 0.12,
+                    y: geometry.shoulderY + geometry.neckHeight * 0.34
+                )
+            }
+
+            // Reposition AO spots.
+            if let leftAO = glowNode.childNode(withName: "jarAmbientOcclusionLeft") as? SKSpriteNode {
+                let aoSize = CGSize(width: geometry.bodyCornerRadius * 1.9, height: geometry.bodyCornerRadius * 1.6)
+                leftAO.size = aoSize
+                leftAO.position = CGPoint(
+                    x: geometry.minX + geometry.bodyCornerRadius + 14,
+                    y: geometry.bottomY + geometry.bodyCornerRadius + 8
+                )
+            }
+            if let rightAO = glowNode.childNode(withName: "jarAmbientOcclusionRight") as? SKSpriteNode {
+                let aoSize = CGSize(width: geometry.bodyCornerRadius * 1.9, height: geometry.bodyCornerRadius * 1.6)
+                rightAO.size = aoSize
+                rightAO.position = CGPoint(
+                    x: geometry.maxX - geometry.bodyCornerRadius - 14,
+                    y: geometry.bottomY + geometry.bodyCornerRadius + 8
+                )
+            }
+        }
+    }
+
+    private func updatePhysicsForMorph(path: CGMutablePath) {
+        morphFrameCounter += 1
+
+        // Throttle physics body recreation to every 4 frames (~15 Hz at 60 fps).
+        guard morphFrameCounter - lastPhysicsUpdateFrame >= 4 else { return }
+        lastPhysicsUpdateFrame = morphFrameCounter
+
+        if let wallNode = childNode(withName: "wall") {
+            let body = SKPhysicsBody(edgeChainFrom: path)
+            body.isDynamic = false
+            body.friction = 0.40
+            body.restitution = 0.30
+            body.categoryBitMask = PhysicsCategory.wall
+            body.collisionBitMask = PhysicsCategory.allEmoji
+            body.contactTestBitMask = PhysicsCategory.allEmoji
+            wallNode.physicsBody = body
+        }
+
+        if let ambientNode = childNode(withName: "ambientWall") {
+            let closedPath = CGMutablePath()
+            closedPath.addPath(path)
+            closedPath.closeSubpath()
+            let ambientBody = SKPhysicsBody(edgeLoopFrom: closedPath)
+            ambientBody.isDynamic = false
+            ambientBody.friction = 0.35
+            ambientBody.restitution = 0.35
+            ambientBody.categoryBitMask = PhysicsCategory.ambientWall
+            ambientBody.collisionBitMask = PhysicsCategory.ambient
+            ambientBody.contactTestBitMask = 0
+            ambientNode.physicsBody = ambientBody
+        }
+    }
+
+    private func finalizeMorph() {
+        guard let interpolator = morphInterpolator else { return }
+
+        isMorphing = false
+        morphProgress = 0
+        morphFrameCounter = 0
+        lastPhysicsUpdateFrame = 0
+
+        // Rebuild with the canonical shape for pixel-perfect bezier curves.
+        let newShape = interpolator.toShape
+        teardownJar()
+        buildJar(shape: newShape)
+
+        // Re-enable rasterization.
+        jarEffectNode?.shouldRasterize = shouldEnableEffects
+        if let glowNode = jarEffectNode?
+            .childNode(withName: "jarVisualRoot")?
+            .childNode(withName: "jarGlowEffectsNode") as? SKEffectNode {
+            glowNode.shouldRasterize = shouldEnableEffects
+        }
+
+        // Clean up morph state.
+        morphInterpolator = nil
+        morphOutlineNode = nil
+        morphInnerFillNode = nil
+        morphGlassFillNode = nil
+        morphOuterGlowNode = nil
+        morphLeftRimNode = nil
+        morphRightRimNode = nil
+        morphHighlightNode = nil
+        morphBackWallMask = nil
+
+        isTransitioningShape = false
+        fillJar()
     }
 
     // MARK: - Particle Effects

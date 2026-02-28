@@ -21,22 +21,35 @@
 				GameScene.sks,
 				GameScene.swift,
 				GameViewModel.swift,
+				music/bg_music.mp3,
 				Vessels/BeakerVessel.swift,
 				Vessels/BottleVessel.swift,
 				Vessels/ErlenmeyerVessel.swift,
 				Vessels/RoundFlaskVessel.swift,
 				Vessels/TallFlaskVessel.swift,
+				Vessels/VesselMorphInterpolator.swift,
 				Vessels/VesselShape.swift,
 			);
 			target = 656A01902F50A0A8004BCF72 /* sift iOS */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		65FFC4982F53205000915682 /* Exceptions for "sift Shared" folder in "Compile Sources" phase from "sift iOS" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 656A018D2F50A0A8004BCF72 /* Sources */;
+			membershipExceptions = (
+				README.md,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		656A01882F50A0A7004BCF72 /* sift Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				656A01B32F50A0A8004BCF72 /* Exceptions for "sift Shared" folder in "sift iOS" target */,
+				65FFC4982F53205000915682 /* Exceptions for "sift Shared" folder in "Compile Sources" phase from "sift iOS" target */,
 			);
 			path = "sift Shared";
 			sourceTree = "<group>";
