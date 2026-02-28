@@ -2311,7 +2311,6 @@ class GameScene: SKScene {
     private func showWinEffect() {
         let crystalNodes = children.filter { $0.name == "crystal" }
         let isPerfectStage = viewModel?.wasPerfectStage ?? false
-        let perfectBonus = viewModel?.lastPerfectBonus ?? 0
 
         // Victory banner
         let banner = SKLabelNode(text: isPerfectStage ? "Perfect Level!" : "Stage Clear!")
@@ -2323,7 +2322,7 @@ class GameScene: SKScene {
             : SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
         banner.position   = CGPoint(
             x: frame.midX,
-            y: frame.midY + (isPerfectStage ? 176 : 150)
+            y: frame.midY + (isPerfectStage ? 196 : 170) // 176:150
         )
         banner.zPosition  = 20
         banner.alpha      = 0
@@ -2341,7 +2340,7 @@ class GameScene: SKScene {
             perfectLabel.fontName = "SFProRounded-Bold"
             perfectLabel.fontSize = 24
             perfectLabel.fontColor = SKColor(red: 1.0, green: 0.94, blue: 0.68, alpha: 1)
-            perfectLabel.position = CGPoint(x: frame.midX, y: frame.midY + 116)
+            perfectLabel.position = CGPoint(x: frame.midX, y: frame.midY + 160) //116
             perfectLabel.zPosition = 20
             perfectLabel.alpha = 0
             perfectLabel.setScale(0.85)
@@ -2359,28 +2358,7 @@ class GameScene: SKScene {
                 ])
             ]))
 
-            let bonusLabel = SKLabelNode(text: "+\(perfectBonus) Perfect Bonus")
-            bonusLabel.name = "banner"
-            bonusLabel.fontName = "SFProRounded-Heavy"
-            bonusLabel.fontSize = 28
-            bonusLabel.fontColor = SKColor(red: 1.0, green: 0.86, blue: 0.2, alpha: 1)
-            bonusLabel.position = CGPoint(x: frame.midX, y: frame.midY + 74)
-            bonusLabel.zPosition = 21
-            bonusLabel.alpha = 0
-            bonusLabel.setScale(0.7)
-            addChild(bonusLabel)
-
-            bonusLabel.run(.sequence([
-                .wait(forDuration: 0.3),
-                .group([
-                    .fadeIn(withDuration: 0.14),
-                    .scale(to: 1.1, duration: 0.14)
-                ]),
-                .group([
-                    .scale(to: 1.0, duration: 0.18),
-                    .moveBy(x: 0, y: 16, duration: 0.18)
-                ])
-            ]))
+ 
 
             for index in 0..<10 {
                 let delay = 0.08 + Double(index) * 0.05
