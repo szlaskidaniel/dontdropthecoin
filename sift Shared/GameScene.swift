@@ -2001,12 +2001,15 @@ class GameScene: SKScene {
 
             let scenePos = child.position
 
-            // Remove items that have escaped the scene bounds (fell out of jar).
+            // Remove items that have left the visible screen. A small margin
+            // prevents visual popping while ensuring off-screen items are freed
+            // quickly and cannot drift back when the user tilts the device.
+            let margin: CGFloat = 20
             let outOfBounds =
-                scenePos.y < frame.minY - 100 ||
-                scenePos.y > frame.maxY + 100 ||
-                scenePos.x < frame.minX - 100 ||
-                scenePos.x > frame.maxX + 100
+                scenePos.y < frame.minY - margin ||
+                scenePos.y > frame.maxY + margin ||
+                scenePos.x < frame.minX - margin ||
+                scenePos.x > frame.maxX + margin
 
             if outOfBounds {
                 if child.name == "junk" {
