@@ -396,6 +396,15 @@ class GameScene: SKScene {
     private var lastHapticTime: TimeInterval = 0
     private var crystalSpawnIndex: Int = 0
 
+    /// Container node for all bokeh background orbs.
+    private var bokehContainerNode: SKNode?
+    /// Per-depth-layer containers for parallax offset.
+    private var bokehLayerNodes: [SKNode] = []
+
+    /// Smoothed tilt values for bokeh parallax (updated from CoreMotion).
+    private var bokehTiltX: CGFloat = 0
+    private var bokehTiltY: CGFloat = 0
+
     /// Track which nodes have already received their exit boost so we only apply it once.
     private var boostedNodes: Set<ObjectIdentifier> = []
 
@@ -465,6 +474,9 @@ class GameScene: SKScene {
         bgNode.shadowedBitMask    = 0
         bgNode.shadowCastBitMask  = 0
         addChild(bgNode)
+
+        // --- Bokeh depth background ---
+        setupBokehBackground()
 
         // --- Single global light ---
         setupLighting()
@@ -1485,6 +1497,211 @@ class GameScene: SKScene {
         return SKTexture(cgImage: image)
     }
 
+    // MARK: - Bokeh Background
+
+    /// Creates a soft, radially-faded circle texture for bokeh orbs.
+    /// The texture uses a smooth Gaussian-like falloff so edges are extremely diffused.
+    private func makeBokehOrbTexture(diameter: CGFloat, color: SKColor) -> SKTexture {
+        let size = Int(diameter)
+        guard size > 0 else { return SKTexture() }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil, width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: size * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return SKTexture() }
+
+        ctx.clear(CGRect(origin: .zero, size: CGSize(width: size, height: size)))
+
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if os(iOS)
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #else
+        let c = color.usingColorSpace(.deviceRGB) ?? color
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #endif
+
+        let center = CGPoint(x: CGFloat(size) / 2, y: CGFloat(size) / 2)
+        let radius = CGFloat(size) / 2
+
+        // Three-stop gradient: bright center -> mid falloff -> transparent edge
+        let components: [CGFloat] = [
+            r, g, b, a,           // center — full glow
+            r, g, b, a * 0.35,   // mid — soft falloff
+            r, g, b, 0.0         // edge — fully transparent
+        ]
+        let locations: [CGFloat] = [0.0, 0.45, 1.0]
+
+        guard let gradient = CGGradient(
+            colorSpace: colorSpace,
+            colorComponents: components,
+            locations: locations,
+            count: 3
+        ) else { return SKTexture() }
+
+        ctx.drawRadialGradient(
+            gradient,
+            startCenter: center, startRadius: 0,
+            endCenter: center, endRadius: radius,
+            options: []
+        )
+
+        guard let image = ctx.makeImage() else { return SKTexture() }
+        return SKTexture(cgImage: image)
+    }
+
+    /// Builds the layered bokeh background with parallax depth.
+    /// Three layers of soft orbs drift at different speeds, creating a deep 3D feel.
+    private func setupBokehBackground() {
+        // Remove any previous bokeh nodes
+        bokehContainerNode?.removeFromParent()
+        bokehLayerNodes.removeAll()
+
+        let container = SKNode()
+        container.name = "bokehContainer"
+        container.zPosition = -9
+        addChild(container)
+        bokehContainerNode = container
+
+        // Color palette — saturated tones that read as luminous against dark bg
+        let palette: [(color: SKColor, weight: Int)] = [
+            (SKColor(red: 0.20, green: 0.30, blue: 0.80, alpha: 1.0), 30),  // midnight blue
+            (SKColor(red: 0.40, green: 0.18, blue: 0.70, alpha: 1.0), 25),  // purple
+            (SKColor(red: 0.15, green: 0.55, blue: 0.70, alpha: 1.0), 20),  // teal
+            (SKColor(red: 0.25, green: 0.70, blue: 0.80, alpha: 1.0), 12),  // cyan flash
+            (SKColor(red: 0.50, green: 0.28, blue: 0.72, alpha: 1.0), 13),  // violet
+        ]
+        let totalWeight = palette.reduce(0) { $0 + $1.weight }
+
+        func weightedRandomColor() -> SKColor {
+            var ticket = Int.random(in: 0..<totalWeight)
+            for entry in palette {
+                ticket -= entry.weight
+                if ticket < 0 { return entry.color }
+            }
+            return palette[0].color
+        }
+
+        // Layer definitions: (count, sizeRange, alphaRange, driftSpeed, zOffset)
+        // Back layer: large, very blurry, slow — creates deep space
+        // Mid layer: medium, moderate blur, medium speed
+        // Front layer: smaller, slightly sharper, faster — closest to camera
+        struct BokehLayer {
+            let count: Int
+            let sizeRange: ClosedRange<CGFloat>
+            let alphaRange: ClosedRange<CGFloat>
+            let driftSpeed: CGFloat       // points per second
+            let zOffset: CGFloat
+            let breatheDuration: ClosedRange<Double>
+        }
+
+        let layers: [BokehLayer] = [
+            // Back — large, soft, slow drift
+            BokehLayer(count: 6, sizeRange: 140...280, alphaRange: 0.35...0.55,
+                       driftSpeed: 2.5, zOffset: 0, breatheDuration: 8.0...14.0),
+            // Mid — medium orbs
+            BokehLayer(count: 7, sizeRange: 70...160, alphaRange: 0.25...0.45,
+                       driftSpeed: 5.0, zOffset: 1, breatheDuration: 6.0...10.0),
+            // Front — smaller, brightest, fastest drift for parallax contrast
+            BokehLayer(count: 6, sizeRange: 35...100, alphaRange: 0.20...0.40,
+                       driftSpeed: 8.0, zOffset: 2, breatheDuration: 4.0...8.0),
+        ]
+
+        let sceneW = self.size.width
+        let sceneH = self.size.height
+
+        for (layerIndex, layer) in layers.enumerated() {
+            // Each depth layer gets its own container for parallax offset
+            let layerNode = SKNode()
+            layerNode.name = "bokehLayer\(layerIndex)"
+            layerNode.zPosition = layer.zOffset
+            container.addChild(layerNode)
+            bokehLayerNodes.append(layerNode)
+
+            for _ in 0..<layer.count {
+                let diameter = CGFloat.random(in: layer.sizeRange)
+                let orbAlpha = CGFloat.random(in: layer.alphaRange)
+
+                // Bake color directly into the texture for maximum brightness
+                let orbColor = weightedRandomColor()
+                let texture = makeBokehOrbTexture(diameter: diameter, color: orbColor)
+                let orb = SKSpriteNode(texture: texture)
+                orb.size = CGSize(width: diameter, height: diameter)
+
+                orb.alpha = orbAlpha
+                orb.blendMode = .add
+                orb.zPosition = 0
+
+                // No lighting interactions
+                orb.lightingBitMask = 0
+                orb.shadowedBitMask = 0
+                orb.shadowCastBitMask = 0
+
+                // Random starting position across the full scene
+                let startX = CGFloat.random(in: -diameter/2 ... sceneW + diameter/2)
+                let startY = CGFloat.random(in: -diameter/2 ... sceneH + diameter/2)
+                orb.position = CGPoint(x: startX, y: startY)
+
+                layerNode.addChild(orb)
+
+                // --- Drift animation (slow, continuous, looping) ---
+                let driftRange = sceneW * 0.3 + diameter
+                let driftDuration = Double(driftRange / layer.driftSpeed)
+
+                // Random drift direction with slight upward bias (like rising bubbles)
+                let angle = CGFloat.random(in: 0 ... .pi * 2)
+                let dx = cos(angle) * driftRange * 0.5
+                let dy = sin(angle) * driftRange * 0.3 + driftRange * 0.15  // upward bias
+
+                let drift = SKAction.sequence([
+                    .moveBy(x: dx, y: dy, duration: driftDuration),
+                    .moveBy(x: -dx, y: -dy, duration: driftDuration)
+                ])
+                // Add slight timing variance so orbs don't sync
+                let driftWithDelay = SKAction.sequence([
+                    .wait(forDuration: Double.random(in: 0...3)),
+                    .repeatForever(drift)
+                ])
+                orb.run(driftWithDelay, withKey: "bokehDrift")
+
+                // --- Breathing opacity animation ---
+                let breatheDuration = Double.random(in: layer.breatheDuration)
+                let peakAlpha = orbAlpha
+                let troughAlpha = orbAlpha * CGFloat.random(in: 0.40...0.70)
+
+                let breathe = SKAction.sequence([
+                    .fadeAlpha(to: troughAlpha, duration: breatheDuration / 2),
+                    .fadeAlpha(to: peakAlpha, duration: breatheDuration / 2)
+                ])
+                let breatheWithDelay = SKAction.sequence([
+                    .wait(forDuration: Double.random(in: 0...breatheDuration)),
+                    .repeatForever(breathe)
+                ])
+                orb.run(breatheWithDelay, withKey: "bokehBreathe")
+            }
+        }
+    }
+
+    /// Offsets each bokeh depth layer opposite to device tilt for subtle parallax.
+    /// Back layers shift more, front layers shift less — reversed depth cue.
+    private func updateBokehParallax() {
+        // Maximum pixel offset per layer (increases with depth index).
+        // Layer 0 (back/largest) shifts most, layer 2 (front/smallest) shifts least.
+        let maxOffsets: [CGFloat] = [30, 18, 9]
+
+        for (i, layerNode) in bokehLayerNodes.enumerated() {
+            guard i < maxOffsets.count else { continue }
+            let strength = maxOffsets[i]
+            // Opposite direction: negate tilt values
+            layerNode.position = CGPoint(
+                x: -bokehTiltX * strength,
+                y: -bokehTiltY * strength
+            )
+        }
+    }
+
     // MARK: - Fill Jar
 
     private func fillJar() {
@@ -1892,6 +2109,11 @@ class GameScene: SKScene {
                 dx: current.dx + (targetGravity.dx - current.dx) * smoothing,
                 dy: current.dy + (targetGravity.dy - current.dy) * smoothing
             )
+
+            // --- Bokeh parallax tilt (very gentle, smoothed) ---
+            let bokehSmoothing: CGFloat = 0.12
+            self.bokehTiltX += (gx - self.bokehTiltX) * bokehSmoothing
+            self.bokehTiltY += (gy - self.bokehTiltY) * bokehSmoothing
         }
         #endif
     }
@@ -1899,6 +2121,10 @@ class GameScene: SKScene {
     // MARK: - Update
 
     override func update(_ currentTime: TimeInterval) {
+        // Bokeh parallax — shift layers opposite to tilt, increasing with depth.
+        // Runs always (menu, playing, game over) for a living background.
+        updateBokehParallax()
+
         // Drive the morph animation when active (even during isTransitioningShape).
         if isMorphing {
             updateMorph(currentTime: currentTime)
