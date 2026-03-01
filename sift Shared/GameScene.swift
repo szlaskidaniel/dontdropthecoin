@@ -36,7 +36,7 @@ private struct PhysicsCategory {
 // MARK: - Emoji Type
 
 enum EmojiType: CaseIterable {
-    case crystal, apple, teddy, shoe, banana, book, gift, duck, donut, puzzle, balloon
+    case crystal, apple, teddy, shoe, banana, book, gift, duck, donut, puzzle, balloon, poop, bomb
 
     var character: String {
         switch self {
@@ -51,12 +51,16 @@ enum EmojiType: CaseIterable {
         case .donut:          return "🍩"
         case .puzzle:         return "🧩"
         case .balloon:        return "🎈"
+        case .poop:           return "💩"
+        case .bomb:           return "💣"
         }
     }
 
-    var isCrystal: Bool { self == .crystal}
+    var isCrystal: Bool { self == .crystal }
     var isJunk: Bool { !isCrystal && !isBalloon }
     var isBalloon: Bool { self == .balloon }
+    var isPoop: Bool { self == .poop }
+    var isBomb: Bool { self == .bomb }
 
     var physicsCategory: UInt32 {
         switch self {
@@ -69,6 +73,8 @@ enum EmojiType: CaseIterable {
     var nodeName: String {
         if isCrystal { return "crystal" }
         if isBalloon { return "balloon" }
+        if isPoop { return "poop" }
+        if isBomb { return "bomb" }
         return "junk"
     }
 
@@ -86,6 +92,8 @@ enum EmojiType: CaseIterable {
         case .donut:          return 0.6
         case .puzzle:         return 0.8
         case .balloon:        return 0.15
+        case .poop:           return 0.7
+        case .bomb:           return 1.2
         }
     }
 
@@ -103,6 +111,8 @@ enum EmojiType: CaseIterable {
         case .donut:                    return 0.14
         case .puzzle:                   return 0.22
         case .balloon:                  return 0.05
+        case .poop:                     return 0.30
+        case .bomb:                     return 0.20
         }
     }
 
@@ -120,6 +130,8 @@ enum EmojiType: CaseIterable {
         case .donut:          return 0.45
         case .puzzle:         return 0.52
         case .balloon:        return 0.70
+        case .poop:           return 0.35
+        case .bomb:           return 0.30
         }
     }
 
@@ -137,6 +149,8 @@ enum EmojiType: CaseIterable {
         case .donut:          return 20
         case .puzzle:         return 22
         case .balloon:        return 40
+        case .poop:           return 20
+        case .bomb:           return 20
         }
     }
 
@@ -146,6 +160,8 @@ enum EmojiType: CaseIterable {
         case .gift, .duck:  return 40
         case .puzzle:       return 38
         case .balloon:      return 72
+        case .poop:         return 40
+        case .bomb:         return 40
         default:            return 36
         }
     }
@@ -420,6 +436,28 @@ class GameScene: SKScene {
     private let shakeAccelerationThreshold: Double = 2.5
     private var lastShakeTime: TimeInterval = 0
 
+    // MARK: Sticky Poop
+    /// Pairs of nodes glued together by poop. The poop node is always the first element.
+    private var poopGluedPairs: [(poop: SKNode, other: SKNode, joint: SKPhysicsJointSpring, stretchLine: SKShapeNode)] = []
+
+    // MARK: Fragile Bomb
+    /// Tracks wall strike counts per bomb node. Explodes on the 3rd hard strike.
+    private var bombStrikeCounts: [SKNode: Int] = [:]
+    /// Timestamp of the last registered strike per bomb — enforces a cooldown between strikes.
+    private var bombLastStrikeTime: [SKNode: TimeInterval] = [:]
+    /// Number of hard wall strikes before detonation.
+    private let bombMaxStrikes: Int = 3
+    /// Minimum collision impulse to register as a "hard" strike against glass.
+    private let bombStrikeImpulseThreshold: CGFloat = 6.0
+    /// Minimum seconds between registered strikes on the same bomb.
+    private let bombStrikeCooldown: TimeInterval = 0.5
+    /// Programmatic hiss sound engine for bomb fuse.
+    private var bombHissPlayer: AVAudioPlayer?
+    /// Programmatic boom sound for detonation.
+    private var bombBoomPlayer: AVAudioPlayer?
+    /// Tracks whether a bomb hiss is currently ramping.
+    private var bombHissActive: Bool = false
+
     private var isGameplayActive: Bool {
         viewModel?.gameState == .playing
     }
@@ -502,7 +540,8 @@ class GameScene: SKScene {
         children.filter {
             $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
             $0.name == "banner" || $0.name == "web" ||
-            $0.name == "ambientCrystal" || $0.name == "ambientEmoji"
+            $0.name == "ambientCrystal" || $0.name == "ambientEmoji" ||
+            $0.name == "poop" || $0.name == "bomb"
         }
         .forEach { node in
             node.removeAllActions()
@@ -511,6 +550,10 @@ class GameScene: SKScene {
 
         stuckNodes.removeAll()
         boostedNodes.removeAll()
+        removeAllPoopGlue()
+        bombStrikeCounts.removeAll()
+        bombLastStrikeTime.removeAll()
+        stopBombHiss()
         crystalSpawnIndex = 0
         stageWon = false
         gameOver = false
@@ -1654,6 +1697,24 @@ class GameScene: SKScene {
         items += Array(repeating: EmojiType.crystal, count: crystalCount)
         for _ in 0..<junkCount { items.append(.randomJunk(forStage: stage)) }
         items += Array(repeating: EmojiType.balloon, count: balloonCount)
+
+        // Special items: poop spawns from stage 4+, bomb from stage 6+
+        // Each has a chance-based spawn (not guaranteed every stage)
+        if stage >= 1 && Int.random(in: 0..<3) < 2 {  // ~67% chance
+            items.append(.poop)
+        }
+        if stage >= 1 && Int.random(in: 0..<4) < 2 {  // ~50% chance
+            items.append(.bomb)
+        }
+        // Second poop at high stages
+        if stage >= 8 && Int.random(in: 0..<3) < 1 {  // ~33% chance
+            items.append(.poop)
+        }
+        // Second bomb at very high stages
+        if stage >= 12 && Int.random(in: 0..<3) < 1 {  // ~33% chance
+            items.append(.bomb)
+        }
+
         items.shuffle()
 
         // Place all items at non-overlapping positions inside the vessel silhouette.
@@ -1692,7 +1753,8 @@ class GameScene: SKScene {
             placeWeb(at: CGPoint(x: webX, y: webY), wallSide: side)
         }
 
-        viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount)
+        let specialCount = items.filter { $0.isPoop || $0.isBomb }.count
+        viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount + specialCount)
 
         // After all items have popped in, show a brief "GO!" banner then unlock gameplay.
         let popDuration: TimeInterval = 0.45
@@ -1810,6 +1872,10 @@ class GameScene: SKScene {
             sprite.blendMode = .alpha
         }
 
+        if type.isBomb {
+            configureBombFuse(sprite)
+        }
+
         // Small local drop shadow to add depth without expensive long cast shadows.
         let dropShadow = SKSpriteNode(texture: texture, color: .black, size: texture.size())
         dropShadow.name = "emojiDropShadow"
@@ -1832,11 +1898,12 @@ class GameScene: SKScene {
         body.categoryBitMask   = type.physicsCategory
         body.collisionBitMask  = PhysicsCategory.allEmoji | PhysicsCategory.wall
 
-        // All emoji report contact with webs; crystals also with walls (for haptics)
-        if type.isCrystal {
-            body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
+        // All emoji report contact with webs and walls.
+        // Poop also reports contact with other emoji (for gluing).
+        if type.isPoop {
+            body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web | PhysicsCategory.crystal | PhysicsCategory.junk | PhysicsCategory.balloon
         } else {
-            body.contactTestBitMask = PhysicsCategory.web | PhysicsCategory.wall
+            body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
         }
 
         sprite.physicsBody = body
@@ -1884,7 +1951,7 @@ class GameScene: SKScene {
         let baseYMin = jarBottomY + 130
         let baseYMax = min(jarTopY - 120, jarBottomY + 360)
 
-        let ambientPool = EmojiType.allCases.filter { !$0.isCrystal && !$0.isBalloon }
+        let ambientPool = EmojiType.allCases.filter { !$0.isCrystal && !$0.isBalloon && !$0.isPoop && !$0.isBomb }
         for _ in 0..<4 {
             guard let randomType = ambientPool.randomElement() else { continue }
             let x = CGFloat.random(in: (cx - jarW * 0.22)...(cx + jarW * 0.22))
@@ -2155,11 +2222,13 @@ class GameScene: SKScene {
             let ua = motion.userAcceleration
             let accelMagnitude = sqrt(ua.x * ua.x + ua.y * ua.y + ua.z * ua.z)
             let now = CACurrentMediaTime()
+            let hasStuckItems = !self.stuckNodes.isEmpty || !self.poopGluedPairs.isEmpty
             if accelMagnitude > self.shakeAccelerationThreshold,
                now - self.lastShakeTime > 0.6,
-               !self.stuckNodes.isEmpty {
+               hasStuckItems {
                 self.lastShakeTime = now
-                self.releaseAllFromWebs()
+                if !self.stuckNodes.isEmpty { self.releaseAllFromWebs() }
+                if !self.poopGluedPairs.isEmpty { self.releaseAllPoopGlue() }
             }
 
             // --- Tilt-based gravity (locked during spawn animation) ---
@@ -2214,6 +2283,7 @@ class GameScene: SKScene {
         }
         guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape, !isSpawning else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
+        updatePoopStretchLines()
 
         // Timer ran out — game over
         if let vm = viewModel, vm.timeRemaining <= 0 {
@@ -2232,7 +2302,8 @@ class GameScene: SKScene {
 
         // Collect all dynamic emoji nodes from the main scene layer.
         let allEmoji: [SKNode] = children.filter {
-            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon"
+            $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
+            $0.name == "poop" || $0.name == "bomb"
         }
 
         // Exit boost — when an item clears the jar top, give it a satisfying fling
@@ -2298,7 +2369,7 @@ class GameScene: SKScene {
                 scenePos.x > frame.maxX + margin
 
             if outOfBounds {
-                if child.name == "junk" {
+                if child.name == "junk" || child.name == "poop" || child.name == "bomb" {
                     removedJunk += 1
                 } else if child.name == "crystal" {
                     removedCrystals += 1
@@ -2306,6 +2377,9 @@ class GameScene: SKScene {
                     removedBalloons += 1
                 }
                 stuckNodes.removeValue(forKey: child)
+                removePoopGlueFor(node: child)
+                bombStrikeCounts.removeValue(forKey: child)
+                bombLastStrikeTime.removeValue(forKey: child)
                 child.removeFromParent()
             }
         }
@@ -2369,7 +2443,7 @@ class GameScene: SKScene {
     // MARK: - Win / Game Over
 
     private func checkWinCondition() {
-        let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" }
+        let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" || $0.name == "poop" || $0.name == "bomb" }
 
         // Stage clear: all junk and balloons gone
         if junkNodes.isEmpty {
@@ -2762,7 +2836,8 @@ class GameScene: SKScene {
         // Remove all emoji, web, and banner nodes from scene
         children.filter {
             $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
-            $0.name == "banner" || $0.name == "web"
+            $0.name == "banner" || $0.name == "web" ||
+            $0.name == "poop" || $0.name == "bomb"
         }
         .forEach { node in
             node.removeAllActions()
@@ -2771,6 +2846,10 @@ class GameScene: SKScene {
 
         stuckNodes.removeAll()
         boostedNodes.removeAll()
+        removeAllPoopGlue()
+        bombStrikeCounts.removeAll()
+        bombLastStrikeTime.removeAll()
+        stopBombHiss()
         crystalSpawnIndex = 0
 
         let oldStage = stage
@@ -3028,6 +3107,757 @@ class GameScene: SKScene {
         fillJar()
     }
 
+    // MARK: - Sticky Poop
+
+    /// Glues a poop node to another emoji node using a spring joint and a visual stretch line.
+    private func gluePoopTo(_ poopNode: SKNode, other: SKNode) {
+        // Don't glue if poop is already glued to something
+        guard !poopGluedPairs.contains(where: { $0.poop === poopNode }) else { return }
+        // Don't glue to another poop
+        guard other.name != "poop" else { return }
+        // Don't glue if the other node is already glued to a poop
+        guard !poopGluedPairs.contains(where: { $0.other === other }) else { return }
+
+        guard let poopBody = poopNode.physicsBody, let otherBody = other.physicsBody else { return }
+        guard poopBody.isDynamic, otherBody.isDynamic else { return }
+
+        // Create a spring joint to bind them together
+        let anchorA = poopNode.position
+        let anchorB = other.position
+        let joint = SKPhysicsJointSpring.joint(
+            withBodyA: poopBody,
+            bodyB: otherBody,
+            anchorA: anchorA,
+            anchorB: anchorB
+        )
+        joint.frequency = 8.0    // stiff spring
+        joint.damping = 0.8      // some damping to avoid oscillation
+        physicsWorld.add(joint)
+
+        // Increase mass so the combined piece feels heavy
+        poopBody.linearDamping = 1.5
+        otherBody.linearDamping = 1.5
+
+        // Create a stretch line between the two nodes
+        let stretchLine = SKShapeNode()
+        stretchLine.strokeColor = SKColor(red: 0.55, green: 0.35, blue: 0.15, alpha: 0.6)
+        stretchLine.lineWidth = 3.0
+        stretchLine.lineCap = .round
+        stretchLine.zPosition = 3
+        stretchLine.name = "poopStretch"
+        addChild(stretchLine)
+
+        poopGluedPairs.append((poop: poopNode, other: other, joint: joint, stretchLine: stretchLine))
+
+        // Haptic feedback
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        #endif
+    }
+
+    /// Updates the visual stretch lines between poop-glued pairs each frame.
+    private func updatePoopStretchLines() {
+        for pair in poopGluedPairs {
+            let from = pair.poop.position
+            let to = pair.other.position
+            let path = CGMutablePath()
+            // Draw a slightly curved line for a "gooey" look
+            let midX = (from.x + to.x) / 2
+            let midY = (from.y + to.y) / 2
+            let dist = hypot(to.x - from.x, to.y - from.y)
+            let sag = min(dist * 0.15, 12)  // sag increases with distance
+            path.move(to: from)
+            path.addQuadCurve(to: to, control: CGPoint(x: midX, y: midY - sag))
+            pair.stretchLine.path = path
+
+            // Thicken/thin based on stretch distance for organic feel
+            let thickness = max(1.5, 4.0 - dist * 0.02)
+            pair.stretchLine.lineWidth = thickness
+        }
+    }
+
+    /// Remove glue for a specific node (when it leaves the screen).
+    private func removePoopGlueFor(node: SKNode) {
+        poopGluedPairs.removeAll { pair in
+            if pair.poop === node || pair.other === node {
+                physicsWorld.remove(pair.joint)
+                pair.stretchLine.removeFromParent()
+                // Restore damping on the surviving node
+                if pair.poop === node {
+                    pair.other.physicsBody?.linearDamping = 0.8
+                } else {
+                    pair.poop.physicsBody?.linearDamping = 0.8
+                }
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Remove all poop glue joints and visual lines.
+    private func removeAllPoopGlue() {
+        for pair in poopGluedPairs {
+            physicsWorld.remove(pair.joint)
+            pair.stretchLine.removeFromParent()
+        }
+        poopGluedPairs.removeAll()
+    }
+
+    /// Release all poop glue — called on vigorous shake.
+    private func releaseAllPoopGlue() {
+        for pair in poopGluedPairs {
+            physicsWorld.remove(pair.joint)
+            pair.stretchLine.removeFromParent()
+
+            // Restore normal damping
+            pair.poop.physicsBody?.linearDamping = 0.8
+            pair.other.physicsBody?.linearDamping = 0.8
+
+            // Pop impulse to separate them
+            let dx = pair.other.position.x - pair.poop.position.x
+            let dy = pair.other.position.y - pair.poop.position.y
+            let dist = max(hypot(dx, dy), 1)
+            let pushStrength: CGFloat = 40
+            pair.poop.physicsBody?.applyImpulse(CGVector(dx: -dx / dist * pushStrength, dy: -dy / dist * pushStrength))
+            pair.other.physicsBody?.applyImpulse(CGVector(dx: dx / dist * pushStrength, dy: dy / dist * pushStrength))
+
+            // Brown dust particle effect at the separation point
+            let midPoint = CGPoint(
+                x: (pair.poop.position.x + pair.other.position.x) / 2,
+                y: (pair.poop.position.y + pair.other.position.y) / 2
+            )
+            brownDustEffect(at: midPoint)
+        }
+
+        poopGluedPairs.removeAll()
+
+        #if os(iOS)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
+    }
+
+    /// Brown dust particle effect — shown when poop is shaken free.
+    private func brownDustEffect(at point: CGPoint) {
+        let dustColors: [SKColor] = [
+            SKColor(red: 0.55, green: 0.35, blue: 0.15, alpha: 0.8),
+            SKColor(red: 0.45, green: 0.28, blue: 0.12, alpha: 0.7),
+            SKColor(red: 0.65, green: 0.42, blue: 0.20, alpha: 0.6),
+            SKColor(red: 0.40, green: 0.25, blue: 0.10, alpha: 0.5),
+        ]
+        for _ in 0..<12 {
+            let r = CGFloat.random(in: 3...7)
+            let particle = SKShapeNode(circleOfRadius: r)
+            particle.fillColor = dustColors.randomElement()!
+            particle.strokeColor = .clear
+            particle.position = point
+            particle.zPosition = 10
+            addChild(particle)
+
+            let angle = CGFloat.random(in: 0 ... .pi * 2)
+            let speed = CGFloat.random(in: 20...60)
+            particle.run(.sequence([
+                .group([
+                    .moveBy(x: cos(angle) * speed,
+                            y: sin(angle) * speed,
+                            duration: 0.5),
+                    .sequence([.scale(to: 1.3, duration: 0.15),
+                               .scale(to: 0.0, duration: 0.35)]),
+                    .fadeOut(withDuration: 0.5)
+                ]),
+                .removeFromParent()
+            ]))
+        }
+    }
+
+    // MARK: - Fragile Bomb
+
+    /// Attaches a fuse spark emitter to a newly spawned bomb.
+    private func configureBombFuse(_ bombNode: SKNode) {
+        guard let sprite = bombNode as? SKSpriteNode else { return }
+
+        // Inner glow node — starts invisible, revealed on first strike
+        let glowNode = SKShapeNode(circleOfRadius: sprite.size.width * 0.35)
+        glowNode.name = "bombGlow"
+        glowNode.fillColor = SKColor(red: 1.0, green: 0.15, blue: 0.05, alpha: 0.0)
+        glowNode.strokeColor = .clear
+        glowNode.glowWidth = 8
+        glowNode.zPosition = -1
+        glowNode.blendMode = .add
+        sprite.addChild(glowNode)
+
+        // Fuse spark emitter — positioned at the top of the bomb
+        let fuseEmitter = SKEmitterNode()
+        fuseEmitter.name = "bombFuse"
+        fuseEmitter.particleTexture = makeCircleTexture(radius: 2)
+        fuseEmitter.particleBirthRate = 0   // starts dormant, activated on strike 1
+        fuseEmitter.numParticlesToEmit = 0
+        fuseEmitter.particleLifetime = 0.4
+        fuseEmitter.particleLifetimeRange = 0.2
+        fuseEmitter.particleSpeed = 20
+        fuseEmitter.particleSpeedRange = 15
+        fuseEmitter.emissionAngle = .pi / 2       // upward
+        fuseEmitter.emissionAngleRange = .pi / 3  // spread
+        fuseEmitter.particleScale = 0.6
+        fuseEmitter.particleScaleRange = 0.4
+        fuseEmitter.particleScaleSpeed = -0.8
+        fuseEmitter.particleAlpha = 0.9
+        fuseEmitter.particleAlphaSpeed = -1.8
+        fuseEmitter.particleColor = SKColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1.0)
+        fuseEmitter.particleColorBlendFactor = 1.0
+        fuseEmitter.particleBlendMode = .add
+        // Position at the top of the emoji
+        fuseEmitter.position = CGPoint(x: 0, y: sprite.size.height * 0.32)
+        fuseEmitter.zPosition = 2
+        sprite.addChild(fuseEmitter)
+
+        // Smoke trail emitter — dormant, thickens with each strike
+        let smokeEmitter = SKEmitterNode()
+        smokeEmitter.name = "bombSmoke"
+        smokeEmitter.particleTexture = makeCircleTexture(radius: 4)
+        smokeEmitter.particleBirthRate = 0   // dormant
+        smokeEmitter.numParticlesToEmit = 0
+        smokeEmitter.particleLifetime = 0.8
+        smokeEmitter.particleLifetimeRange = 0.3
+        smokeEmitter.particleSpeed = 8
+        smokeEmitter.particleSpeedRange = 4
+        smokeEmitter.emissionAngle = .pi / 2
+        smokeEmitter.emissionAngleRange = .pi / 5
+        smokeEmitter.particleScale = 0.3
+        smokeEmitter.particleScaleRange = 0.2
+        smokeEmitter.particleScaleSpeed = 0.6
+        smokeEmitter.particleAlpha = 0.3
+        smokeEmitter.particleAlphaSpeed = -0.5
+        smokeEmitter.particleColor = SKColor(red: 0.4, green: 0.4, blue: 0.4, alpha: 1.0)
+        smokeEmitter.particleColorBlendFactor = 1.0
+        smokeEmitter.position = CGPoint(x: 0, y: sprite.size.height * 0.36)
+        smokeEmitter.zPosition = 1
+        sprite.addChild(smokeEmitter)
+    }
+
+    /// Register a hard wall strike on a bomb. Returns true if the bomb should detonate.
+    private func registerBombWallHit(_ bombNode: SKNode, impulse: CGFloat) -> Bool {
+        guard impulse >= bombStrikeImpulseThreshold else { return false }
+
+        // Enforce cooldown — ignore rapid-fire collisions from the same bounce
+        let now = CACurrentMediaTime()
+        if let lastStrike = bombLastStrikeTime[bombNode],
+           now - lastStrike < bombStrikeCooldown {
+            return false
+        }
+        bombLastStrikeTime[bombNode] = now
+
+        let current = bombStrikeCounts[bombNode, default: 0]
+        let newCount = current + 1
+        bombStrikeCounts[bombNode] = newCount
+
+        // Escalating haptics per strike
+        #if os(iOS)
+        switch newCount {
+        case 1:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case 2:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        default:
+            break // explosion haptic is handled in explodeBomb
+        }
+        #endif
+
+        // Visual evolution per strike
+        applyBombStrikeVisuals(bombNode, strike: newCount)
+
+        // Start or intensify fuse hiss sound
+        updateBombHissSound(strike: newCount)
+
+        return newCount >= bombMaxStrikes
+    }
+
+    /// Progressive visual evolution — each strike adds more urgency.
+    private func applyBombStrikeVisuals(_ bombNode: SKNode, strike: Int) {
+        guard let sprite = bombNode as? SKSpriteNode else { return }
+        let glow = sprite.childNode(withName: "bombGlow") as? SKShapeNode
+        let fuse = sprite.childNode(withName: "bombFuse") as? SKEmitterNode
+        let smoke = sprite.childNode(withName: "bombSmoke") as? SKEmitterNode
+
+        // Clean previous actions
+        sprite.removeAction(forKey: "bombFlash")
+        sprite.removeAction(forKey: "bombShake")
+
+        switch strike {
+        case 1:
+            // --- STRIKE 1: WARNING ---
+            // Faint pulsing red inner glow fades in
+            glow?.run(.sequence([
+                .customAction(withDuration: 0) { node, _ in
+                    (node as? SKShapeNode)?.fillColor = SKColor(red: 1.0, green: 0.15, blue: 0.05, alpha: 0.12)
+                },
+                .repeatForever(.sequence([
+                    .fadeAlpha(to: 0.6, duration: 0.8),
+                    .fadeAlpha(to: 0.2, duration: 0.8)
+                ]))
+            ]), withKey: "bombGlowPulse")
+
+            // Fuse sparks begin — small, gentle
+            fuse?.particleBirthRate = 8
+            fuse?.particleSpeed = 20
+
+            // Thin smoke starts
+            smoke?.particleBirthRate = 2
+            smoke?.particleScale = 0.3
+
+        case 2:
+            // --- STRIKE 2: DANGER ---
+            // Glow intensifies and pulses faster
+            glow?.removeAction(forKey: "bombGlowPulse")
+            glow?.run(.sequence([
+                .customAction(withDuration: 0) { node, _ in
+                    (node as? SKShapeNode)?.fillColor = SKColor(red: 1.0, green: 0.1, blue: 0.05, alpha: 0.25)
+                    (node as? SKShapeNode)?.glowWidth = 14
+                },
+                .repeatForever(.sequence([
+                    .fadeAlpha(to: 0.85, duration: 0.35),
+                    .fadeAlpha(to: 0.35, duration: 0.35)
+                ]))
+            ]), withKey: "bombGlowPulse")
+
+            // Red flash on the bomb body
+            let flash = SKAction.sequence([
+                .colorize(with: SKColor(red: 1.0, green: 0.15, blue: 0.0, alpha: 1.0), colorBlendFactor: 0.35, duration: 0.25),
+                .colorize(withColorBlendFactor: 0.05, duration: 0.25)
+            ])
+            sprite.run(.repeatForever(flash), withKey: "bombFlash")
+
+            // Body vibration — rapid small jitter
+            let shake = SKAction.sequence([
+                .moveBy(x: -1.5, y: 0, duration: 0.02),
+                .moveBy(x: 3.0, y: 0, duration: 0.02),
+                .moveBy(x: -3.0, y: 0, duration: 0.02),
+                .moveBy(x: 1.5, y: 0, duration: 0.02),
+            ])
+            sprite.run(.repeatForever(shake), withKey: "bombShake")
+
+            // Fuse sparks intensify — brighter, more
+            fuse?.particleBirthRate = 25
+            fuse?.particleSpeed = 35
+            fuse?.particleColor = SKColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 1.0)
+
+            // Smoke thickens substantially
+            smoke?.particleBirthRate = 8
+            smoke?.particleScale = 0.5
+            smoke?.particleLifetime = 1.0
+            smoke?.particleAlpha = 0.5
+
+        default:
+            break // strike 3 triggers detonation, handled externally
+        }
+    }
+
+    /// Generates and plays a programmatic hiss/fuse sound that increases in pitch per strike.
+    private func updateBombHissSound(strike: Int) {
+        // Generate a short burst of filtered noise as a hiss sound
+        let sampleRate: Double = 44100
+        let duration: Double = strike >= 2 ? 2.0 : 1.5
+        let sampleCount = Int(sampleRate * duration)
+
+        // Base frequency rises with strike count
+        let baseFreq: Double = strike == 1 ? 2000 : 4000
+        let amplitude: Double = strike == 1 ? 0.08 : 0.15
+
+        var samples = [Float](repeating: 0, count: sampleCount)
+        for i in 0..<sampleCount {
+            let t = Double(i) / sampleRate
+            // Mix white noise with a high-frequency sine to create a hiss
+            let noise = Float.random(in: -1...1)
+            let tone = Float(sin(2.0 * .pi * baseFreq * t) * 0.3)
+            let envelope = Float(min(t * 8.0, 1.0) * max(1.0 - t / duration, 0.0)) // fade in/out
+            samples[i] = (noise * 0.7 + tone) * Float(amplitude) * envelope
+        }
+
+        // Create WAV data in memory
+        let dataSize = sampleCount * 2  // 16-bit samples
+        let fileSize = 44 + dataSize
+        var wavData = Data(capacity: fileSize)
+
+        // WAV header
+        func appendUInt32LE(_ value: UInt32) { wavData.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) }) }
+        func appendUInt16LE(_ value: UInt16) { wavData.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) }) }
+
+        wavData.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
+        appendUInt32LE(UInt32(fileSize - 8))
+        wavData.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
+        wavData.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
+        appendUInt32LE(16)                                      // chunk size
+        appendUInt16LE(1)                                       // PCM
+        appendUInt16LE(1)                                       // mono
+        appendUInt32LE(UInt32(sampleRate))                       // sample rate
+        appendUInt32LE(UInt32(sampleRate) * 2)                  // byte rate
+        appendUInt16LE(2)                                       // block align
+        appendUInt16LE(16)                                      // bits per sample
+        wavData.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
+        appendUInt32LE(UInt32(dataSize))
+
+        for sample in samples {
+            let clamped = max(-1, min(1, sample))
+            let intSample = Int16(clamped * Float(Int16.max))
+            appendUInt16LE(UInt16(bitPattern: intSample))
+        }
+
+        // Play via AVAudioPlayer
+        do {
+            bombHissPlayer?.stop()
+            let player = try AVAudioPlayer(data: wavData)
+            player.volume = 0.5
+            player.prepareToPlay()
+            player.play()
+            bombHissPlayer = player
+            bombHissActive = true
+        } catch {
+            // Silently fail — sound is non-critical
+        }
+    }
+
+    /// Stop bomb hiss if playing.
+    private func stopBombHiss() {
+        bombHissPlayer?.stop()
+        bombHissPlayer = nil
+        bombHissActive = false
+    }
+
+    /// Synthesizes and plays a deep, punchy explosion boom sound.
+    private func playBombBoomSound() {
+        let sampleRate: Double = 44100
+        let duration: Double = 0.8
+        let sampleCount = Int(sampleRate * duration)
+
+        var samples = [Float](repeating: 0, count: sampleCount)
+        for i in 0..<sampleCount {
+            let t = Double(i) / sampleRate
+
+            // Sharp attack envelope: instant rise, fast exponential decay
+            let attack = min(t * 200.0, 1.0)  // ~5ms attack
+            let decay = exp(-t * 6.0)           // fast exponential decay
+            let envelope = Float(attack * decay)
+
+            // Layer 1: Deep sub-bass thump (40-60 Hz, pitch drops over time)
+            let subFreq = 60.0 - t * 30.0  // sweeps from 60 Hz down to ~36 Hz
+            let sub = Float(sin(2.0 * .pi * subFreq * t)) * 0.9
+
+            // Layer 2: Mid-frequency body punch (120 Hz, faster decay)
+            let midDecay = Float(exp(-t * 10.0))
+            let mid = Float(sin(2.0 * .pi * 120.0 * t)) * 0.5 * midDecay
+
+            // Layer 3: High-frequency crack/snap (noise burst, very fast decay)
+            let crackDecay = Float(exp(-t * 30.0))
+            let crack = Float.random(in: -1...1) * 0.6 * crackDecay
+
+            // Layer 4: Rumble tail (low noise, slow decay for sustained boom feel)
+            let rumbleDecay = Float(exp(-t * 3.5))
+            let rumble = Float.random(in: -1...1) * 0.15 * rumbleDecay
+
+            samples[i] = (sub + mid + crack + rumble) * envelope * 0.85
+        }
+
+        // Soft-clip to prevent harsh digital distortion
+        for i in 0..<sampleCount {
+            let x = samples[i]
+            samples[i] = x / (1.0 + abs(x)) * 1.4  // warm saturation
+        }
+
+        // Build WAV in memory
+        let dataSize = sampleCount * 2
+        let fileSize = 44 + dataSize
+        var wavData = Data(capacity: fileSize)
+
+        func appendUInt32LE(_ value: UInt32) { wavData.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) }) }
+        func appendUInt16LE(_ value: UInt16) { wavData.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) }) }
+
+        wavData.append(contentsOf: [0x52, 0x49, 0x46, 0x46]) // "RIFF"
+        appendUInt32LE(UInt32(fileSize - 8))
+        wavData.append(contentsOf: [0x57, 0x41, 0x56, 0x45]) // "WAVE"
+        wavData.append(contentsOf: [0x66, 0x6D, 0x74, 0x20]) // "fmt "
+        appendUInt32LE(16)
+        appendUInt16LE(1)                                       // PCM
+        appendUInt16LE(1)                                       // mono
+        appendUInt32LE(UInt32(sampleRate))
+        appendUInt32LE(UInt32(sampleRate) * 2)
+        appendUInt16LE(2)
+        appendUInt16LE(16)
+        wavData.append(contentsOf: [0x64, 0x61, 0x74, 0x61]) // "data"
+        appendUInt32LE(UInt32(dataSize))
+
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            let intSample = Int16(clamped * Float(Int16.max))
+            appendUInt16LE(UInt16(bitPattern: intSample))
+        }
+
+        do {
+            bombBoomPlayer?.stop()
+            let player = try AVAudioPlayer(data: wavData)
+            player.volume = 0.9
+            player.prepareToPlay()
+            player.play()
+            bombBoomPlayer = player
+        } catch {
+            // Non-critical
+        }
+    }
+
+    /// Explodes a bomb — 0.5s freeze-frame for drama, then massive force impulse.
+    private func explodeBomb(_ bombNode: SKNode) {
+        let center = bombNode.position
+
+        // Remove bomb from tracking
+        bombStrikeCounts.removeValue(forKey: bombNode)
+        bombLastStrikeTime.removeValue(forKey: bombNode)
+        removePoopGlueFor(node: bombNode)
+        stopBombHiss()
+
+        // --- Strike 3 freeze-frame: brief physics pause for dramatic tension ---
+        let savedSpeed = physicsWorld.speed
+        physicsWorld.speed = 0
+
+        // Stop all bomb visual actions and flash white
+        bombNode.removeAllActions()
+        if let sprite = bombNode as? SKSpriteNode {
+            sprite.colorBlendFactor = 0.7
+            sprite.color = .white
+        }
+
+        // White flash overlay on the bomb during freeze
+        let freezeFlash = SKShapeNode(circleOfRadius: 30)
+        freezeFlash.fillColor = SKColor(red: 1.0, green: 1.0, blue: 0.9, alpha: 0.7)
+        freezeFlash.strokeColor = .clear
+        freezeFlash.position = center
+        freezeFlash.zPosition = 20
+        freezeFlash.blendMode = .add
+        addChild(freezeFlash)
+
+        // Heavy "boom" haptic during freeze
+        #if os(iOS)
+        let heavyImpact = UIImpactFeedbackGenerator(style: .heavy)
+        heavyImpact.prepare()
+        heavyImpact.impactOccurred(intensity: 1.0)
+        #endif
+
+        // After 0.5s freeze-frame, resume physics and detonate
+        run(.sequence([
+            .wait(forDuration: 0.5),
+            .run { [weak self] in
+                guard let self else { return }
+                freezeFlash.removeFromParent()
+                self.physicsWorld.speed = savedSpeed
+
+                // BOOM sound + visual explosion
+                self.playBombBoomSound()
+                self.showBombExplosionEffect(at: center)
+
+                // --- Force impulse — devastate everything in range ---
+                let blastRadius: CGFloat = 320
+                let maxForce: CGFloat = 420
+
+                let allItems: [SKNode] = self.children.filter {
+                    $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
+                    $0.name == "poop" || $0.name == "bomb"
+                }
+
+                for item in allItems where item !== bombNode {
+                    guard let pb = item.physicsBody, pb.isDynamic else { continue }
+                    let dx = item.position.x - center.x
+                    let dy = item.position.y - center.y
+                    let dist = max(hypot(dx, dy), 1)
+
+                    if dist < blastRadius {
+                        // Cubic falloff — devastating up close, still strong at range
+                        let falloff = 1.0 - (dist / blastRadius)
+                        let force = maxForce * falloff * falloff * falloff
+                        let nx = dx / dist
+                        let ny = dy / dist
+                        // Massive impulse + strong upward bias to launch items out of the jar
+                        pb.applyImpulse(CGVector(
+                            dx: nx * force * 1.2,
+                            dy: ny * force + force * 0.5
+                        ))
+                        pb.angularVelocity += CGFloat.random(in: -25...25)
+
+                        // Temporarily zero out damping so items fly freely
+                        pb.linearDamping = 0.1
+
+                        // Release from web if stuck
+                        if self.stuckNodes[item] != nil {
+                            item.removeAction(forKey: "webDrift")
+                            let isBalloon = item.name == "balloon"
+                            pb.affectedByGravity = !isBalloon
+                            self.stuckNodes.removeValue(forKey: item)
+                        }
+
+                        // Break poop glue on affected items
+                        self.removePoopGlueFor(node: item)
+
+                        // Restore normal damping after items have scattered
+                        let isBalloon = item.name == "balloon"
+                        let restoreDamping = isBalloon ? 2.0 : 0.8
+                        item.run(.sequence([
+                            .wait(forDuration: 0.6),
+                            .run { pb.linearDamping = CGFloat(restoreDamping) }
+                        ]))
+                    }
+                }
+
+                // Remove the bomb node
+                bombNode.removeAllActions()
+                bombNode.removeFromParent()
+
+                // Update junk count (bomb counts as removed junk)
+                self.viewModel?.junkRemoved(1)
+
+                // --- Haptic rumble sequence: makes the phone shake like an actual explosion ---
+                #if os(iOS)
+                // Initial slam
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
+
+                // Rapid staccato rumble — 6 heavy taps over 0.4s
+                for i in 0..<6 {
+                    let delay = 0.06 + Double(i) * 0.07
+                    let intensity = max(1.0 - Double(i) * 0.12, 0.4)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: intensity)
+                    }
+                }
+
+                // Final deep thud after rumble settles
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                #endif
+            }
+        ]))
+    }
+
+    /// Massive explosion visual effect for bomb detonation.
+    private func showBombExplosionEffect(at point: CGPoint) {
+        // --- Primary blast flash (large, bright) ---
+        let flash = SKShapeNode(circleOfRadius: 80)
+        flash.fillColor = SKColor(red: 1.0, green: 0.85, blue: 0.3, alpha: 0.95)
+        flash.strokeColor = .clear
+        flash.position = point
+        flash.zPosition = 18
+        flash.blendMode = .add
+        addChild(flash)
+        flash.run(.sequence([
+            .group([
+                .scale(to: 3.5, duration: 0.2),
+                .fadeOut(withDuration: 0.2)
+            ]),
+            .removeFromParent()
+        ]))
+
+        // --- Secondary shockwave ring ---
+        let ring = SKShapeNode(circleOfRadius: 20)
+        ring.fillColor = .clear
+        ring.strokeColor = SKColor(red: 1.0, green: 0.7, blue: 0.3, alpha: 0.7)
+        ring.lineWidth = 4
+        ring.glowWidth = 6
+        ring.position = point
+        ring.zPosition = 17
+        ring.blendMode = .add
+        addChild(ring)
+        ring.run(.sequence([
+            .group([
+                .scale(to: 8.0, duration: 0.35),
+                .fadeOut(withDuration: 0.35)
+            ]),
+            .removeFromParent()
+        ]))
+
+        // --- Dense smoke cloud (24 particles) ---
+        let smokeColors: [SKColor] = [
+            SKColor(red: 0.20, green: 0.18, blue: 0.15, alpha: 0.85),
+            SKColor(red: 0.30, green: 0.28, blue: 0.25, alpha: 0.75),
+            SKColor(red: 0.40, green: 0.38, blue: 0.35, alpha: 0.65),
+            SKColor(red: 0.18, green: 0.15, blue: 0.12, alpha: 0.90),
+        ]
+        for _ in 0..<24 {
+            let r = CGFloat.random(in: 10...28)
+            let smoke = SKShapeNode(circleOfRadius: r)
+            smoke.fillColor = smokeColors.randomElement()!
+            smoke.strokeColor = .clear
+            smoke.position = CGPoint(
+                x: point.x + CGFloat.random(in: -10...10),
+                y: point.y + CGFloat.random(in: -10...10)
+            )
+            smoke.zPosition = 14
+            addChild(smoke)
+
+            let angle = CGFloat.random(in: 0 ... .pi * 2)
+            let speed = CGFloat.random(in: 50...140)
+            let growScale = CGFloat.random(in: 3.0...6.0)
+            smoke.run(.sequence([
+                .group([
+                    .moveBy(x: cos(angle) * speed,
+                            y: sin(angle) * speed + 40,  // smoke rises
+                            duration: 0.9),
+                    .scale(to: growScale, duration: 0.9),
+                    .fadeOut(withDuration: 0.9)
+                ]),
+                .removeFromParent()
+            ]))
+        }
+
+        // --- Ember/spark shower (16 particles) ---
+        let emberColors: [SKColor] = [
+            SKColor(red: 1.0, green: 0.9, blue: 0.3, alpha: 0.95),
+            SKColor(red: 1.0, green: 0.6, blue: 0.1, alpha: 0.95),
+            SKColor(red: 1.0, green: 0.4, blue: 0.1, alpha: 0.90),
+        ]
+        for _ in 0..<16 {
+            let ember = SKShapeNode(circleOfRadius: CGFloat.random(in: 1.5...5))
+            ember.fillColor = emberColors.randomElement()!
+            ember.strokeColor = .clear
+            ember.position = point
+            ember.zPosition = 19
+            ember.blendMode = .add
+            addChild(ember)
+
+            let angle = CGFloat.random(in: 0 ... .pi * 2)
+            let speed = CGFloat.random(in: 80...200)
+            ember.run(.sequence([
+                .group([
+                    .moveBy(x: cos(angle) * speed,
+                            y: sin(angle) * speed,
+                            duration: 0.5),
+                    .fadeOut(withDuration: 0.5),
+                    .scale(to: 0, duration: 0.5)
+                ]),
+                .removeFromParent()
+            ]))
+        }
+
+        // --- Debris chunks (dark fragments flung outward) ---
+        for _ in 0..<6 {
+            let chunkSize = CGFloat.random(in: 4...10)
+            let chunk = SKShapeNode(rectOf: CGSize(width: chunkSize, height: chunkSize * 0.6), cornerRadius: 1)
+            chunk.fillColor = SKColor(red: 0.15, green: 0.12, blue: 0.10, alpha: 0.8)
+            chunk.strokeColor = .clear
+            chunk.position = point
+            chunk.zPosition = 13
+            addChild(chunk)
+
+            let angle = CGFloat.random(in: 0 ... .pi * 2)
+            let speed = CGFloat.random(in: 60...160)
+            let spin = CGFloat.random(in: -20...20)
+            chunk.run(.sequence([
+                .group([
+                    .moveBy(x: cos(angle) * speed,
+                            y: sin(angle) * speed - 20,  // debris falls
+                            duration: 0.8),
+                    .rotate(byAngle: spin, duration: 0.8),
+                    .fadeOut(withDuration: 0.8)
+                ]),
+                .removeFromParent()
+            ]))
+        }
+    }
+
     // MARK: - Particle Effects
 
     private func sparkleEffect(at point: CGPoint) {
@@ -3094,6 +3924,28 @@ extension GameScene: SKPhysicsContactDelegate {
 
         let impulse = contact.collisionImpulse
         let now = CACurrentMediaTime()
+
+        // --- Sticky Poop: glue to any other emoji on contact ---
+        let nodeA = contact.bodyA.node
+        let nodeB = contact.bodyB.node
+        if let nA = nodeA, let nB = nodeB {
+            if nA.name == "poop" && (nB.name == "crystal" || nB.name == "junk" || nB.name == "balloon" || nB.name == "bomb") {
+                gluePoopTo(nA, other: nB)
+            } else if nB.name == "poop" && (nA.name == "crystal" || nA.name == "junk" || nA.name == "balloon" || nA.name == "bomb") {
+                gluePoopTo(nB, other: nA)
+            }
+        }
+
+        // --- Fragile Bomb: track wall impacts ---
+        let bombHitWall = (nodeA?.name == "bomb" && b == PhysicsCategory.wall) ||
+                          (nodeB?.name == "bomb" && a == PhysicsCategory.wall)
+        if bombHitWall {
+            let bombNode = (nodeA?.name == "bomb") ? nodeA! : nodeB!
+            if registerBombWallHit(bombNode, impulse: impulse) {
+                explodeBomb(bombNode)
+                return
+            }
+        }
 
         // --- Crystal-wall haptics (.heavy) + impact flash ---
         let crystalHitWall = (a == PhysicsCategory.crystal && b == PhysicsCategory.wall) ||
