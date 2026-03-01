@@ -82,15 +82,25 @@ struct RoundFlaskVessel: VesselShape {
         let sphereR  = bodyHalf
         let sphereCY = geometry.bottomY + sphereR
 
-        if y > geometry.shoulderY {
-            // Neck region: smooth taper from body to neck
-            let t = (y - geometry.shoulderY) / (geometry.topY - geometry.shoulderY)
+        // The bezier S-curve in buildGeometry starts the sphere-to-neck transition
+        // at sphereCY + sphereR * 0.30. Above that Y the path is no longer on the
+        // sphere — it follows the S-curve up to the neck. Model this as a smooth
+        // blend from the sphere width at the transition point to neckHalf at topY.
+        let transitionY = sphereCY + sphereR * 0.30
+
+        if y >= transitionY {
+            // Width at the transition point on the sphere
+            let transitionWidth = halfWidthAtSphere(
+                y: transitionY, sphereCY: sphereCY,
+                sphereR: sphereR, bodyHalf: bodyHalf
+            )
+            // Smooth hermite blend from transitionWidth down to neckHalf
+            let t = (y - transitionY) / (geometry.topY - transitionY)
             let smooth = t * t * (3.0 - 2.0 * t)
-            let shoulderWidth = halfWidthAtSphere(y: geometry.shoulderY, sphereCY: sphereCY, sphereR: sphereR, bodyHalf: bodyHalf)
-            return shoulderWidth + (neckHalf - shoulderWidth) * smooth
+            return transitionWidth + (neckHalf - transitionWidth) * smooth
         }
 
-        // Spherical body region
+        // Spherical body region (below the transition point)
         return halfWidthAtSphere(y: y, sphereCY: sphereCY, sphereR: sphereR, bodyHalf: bodyHalf)
     }
 

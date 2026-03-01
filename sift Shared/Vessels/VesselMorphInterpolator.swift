@@ -73,19 +73,28 @@ struct VesselMorphInterpolator {
 
         let path = CGMutablePath()
         let n = 80
-        path.move(to: CGPoint(
-            x: geometry.neckMinX + offset,
-            y: geometry.topY - 1
-        ))
 
-        for i in 1...n {
+        // Sample all points first, including the start, so the move-to
+        // and line-to points use the same halfWidth source — no jump at the top.
+        var points: [CGPoint] = []
+        for i in 0...n {
             let frac = CGFloat(i) / CGFloat(n)
             let y = geometry.topY - 1 - frac * (geometry.topY - 1 - lowerRimY)
             let normalizedFrac = (y - geometry.bottomY) / (geometry.topY - geometry.bottomY)
             let hw = interpolatedHalfWidth(atNormalized: normalizedFrac, t: t)
-            let x = geometry.centerX - hw + offset
-            path.addLine(to: CGPoint(x: x, y: y))
+            points.append(CGPoint(x: geometry.centerX - hw + offset, y: y))
         }
+
+        // Enforce monotonic x: the left rim should only move left (x decreasing)
+        // as we go down from the neck. Clamp any point that jitters back right.
+        for i in 1..<points.count {
+            if points[i].x > points[i - 1].x {
+                points[i].x = points[i - 1].x
+            }
+        }
+
+        path.move(to: points[0])
+        for i in 1...n { path.addLine(to: points[i]) }
         return path
     }
 
@@ -96,19 +105,26 @@ struct VesselMorphInterpolator {
 
         let path = CGMutablePath()
         let n = 80
-        path.move(to: CGPoint(
-            x: geometry.neckMaxX - offset,
-            y: geometry.topY - 1
-        ))
 
-        for i in 1...n {
+        var points: [CGPoint] = []
+        for i in 0...n {
             let frac = CGFloat(i) / CGFloat(n)
             let y = geometry.topY - 1 - frac * (geometry.topY - 1 - lowerRimY)
             let normalizedFrac = (y - geometry.bottomY) / (geometry.topY - geometry.bottomY)
             let hw = interpolatedHalfWidth(atNormalized: normalizedFrac, t: t)
-            let x = geometry.centerX + hw - offset
-            path.addLine(to: CGPoint(x: x, y: y))
+            points.append(CGPoint(x: geometry.centerX + hw - offset, y: y))
         }
+
+        // Enforce monotonic x: the right rim should only move right (x increasing)
+        // as we go down from the neck.
+        for i in 1..<points.count {
+            if points[i].x < points[i - 1].x {
+                points[i].x = points[i - 1].x
+            }
+        }
+
+        path.move(to: points[0])
+        for i in 1...n { path.addLine(to: points[i]) }
         return path
     }
 
@@ -119,19 +135,25 @@ struct VesselMorphInterpolator {
 
         let path = CGMutablePath()
         let n = 100
-        path.move(to: CGPoint(
-            x: geometry.neckMinX + offset,
-            y: geometry.topY
-        ))
 
-        for i in 1...n {
+        var points: [CGPoint] = []
+        for i in 0...n {
             let frac = CGFloat(i) / CGFloat(n)
             let y = geometry.topY - frac * (geometry.topY - bottomStop)
             let normalizedFrac = (y - geometry.bottomY) / (geometry.topY - geometry.bottomY)
             let hw = interpolatedHalfWidth(atNormalized: normalizedFrac, t: t)
-            let x = geometry.centerX - hw + offset
-            path.addLine(to: CGPoint(x: x, y: y))
+            points.append(CGPoint(x: geometry.centerX - hw + offset, y: y))
         }
+
+        // Enforce monotonic x: highlight should only move left as we go down.
+        for i in 1..<points.count {
+            if points[i].x > points[i - 1].x {
+                points[i].x = points[i - 1].x
+            }
+        }
+
+        path.move(to: points[0])
+        for i in 1...n { path.addLine(to: points[i]) }
         return path
     }
 

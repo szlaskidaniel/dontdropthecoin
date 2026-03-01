@@ -2250,23 +2250,10 @@ class GameScene: SKScene {
             }
         }
 
-        // Check if all crystals have floated outside the jar (even if still on screen).
-        // If no crystal is inside the jar, the player has lost them all.
-        let allCrystalNodes = children.filter { $0.name == "crystal" }
-        if !allCrystalNodes.isEmpty {
-            let insideJar = allCrystalNodes.filter { isInsideJar($0.position) }
-            if insideJar.isEmpty {
-                gameOver = true
-                viewModel?.crystalsInJar = 0
-                viewModel?.gameEnded()
-                showGameOverEffect()
-
-                #if os(iOS)
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
-                #endif
-                return
-            }
-        }
+        // Update crystalsInJar live so the HUD reflects the current count.
+        // Crystals outside the jar are NOT lost — the player can tilt them back in.
+        let inJarNow = crystalsInsideJar()
+        viewModel?.crystalsInJar = inJarNow.count
 
         checkWinCondition()
     }
@@ -2294,11 +2281,11 @@ class GameScene: SKScene {
     private func checkWinCondition() {
         let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" }
 
-        // Stage clear: all junk and balloons gone, at least some crystals inside the jar
+        // Stage clear: all junk and balloons gone
         if junkNodes.isEmpty {
-            // Update crystalsInJar to reflect only gems actually inside the jar
-            let inJar = crystalsInsideJar()
-            viewModel?.crystalsInJar = inJar.count
+            // Count all surviving crystals — both inside the jar and still on screen.
+            let allSurviving = children.filter { $0.name == "crystal" }
+            viewModel?.crystalsInJar = allSurviving.count
 
             stageWon = true
             viewModel?.stageCleared()
@@ -2311,10 +2298,15 @@ class GameScene: SKScene {
         let isPerfectStage = viewModel?.wasPerfectStage ?? false
 
         // Victory banner
+        
+         //  .font(.system(size: 15, weight: .semibold, design: .rounded))
+           // .textCase(.uppercase)
+           // .tracking(1.0)
+        
         let banner = SKLabelNode(text: isPerfectStage ? "PERFECT LEVEL!" : "STAGE CLEAR!")
         banner.name       = "banner"
         banner.fontName   = "SFProRounded-Heavy"
-        banner.fontSize   = 44
+        banner.fontSize   = 40
         banner.fontColor  = isPerfectStage
             ? SKColor(red: 1.0, green: 0.9, blue: 0.3, alpha: 1)
             : SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
@@ -2794,7 +2786,10 @@ class GameScene: SKScene {
         jarTopY = geometry.topY
         jarPath = geometry.path
 
-        if rawT >= 1.0 {
+        // Finalize slightly before t=1.0 — the canonical rebuild is visually
+        // identical at t≈0.97 but avoids floating-point jitter artifacts
+        // that appear in the last few interpolated frames.
+        if rawT >= 0.97 {
             finalizeMorph()
         }
     }
