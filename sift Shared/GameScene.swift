@@ -976,153 +976,55 @@ class GameScene: SKScene {
     }
 
     /// Adds one batch of dirt marks for a single completed play.
-    /// Dirt concentrates around the neck/rim (where hands touch) and the bottom/corners
-    /// (where grime settles). The middle body stays mostly clean.
+    /// Stains and smudges can appear anywhere inside the vessel.
+    /// Uses `randomPointInsideJar` to respect the vessel's curved silhouette.
     private func addStainBatch(playIndex: Int, rng: inout DirtRNG) {
-        let jarW = jarMaxX - jarMinX
-        let jarH = jarTopY - jarBottomY
-        let cx = (jarMinX + jarMaxX) / 2
-        // Neck zone: the narrow opening at the top where fingers grip
-        let neckW = jarW * 0.38
-        let neckTopY = jarTopY
-        let neckBottomY = jarTopY - jarH * 0.30
-
-        // --- Neck / rim stains (2-4 per play) — where hands grab the jar ---
-        let neckCount = 2 + rng.nextInt(bound: 3)
-        for _ in 0..<neckCount {
-            let x = cx + rng.nextCGFloat(in: -neckW * 0.55 ... neckW * 0.55)
-            let y = rng.nextCGFloat(in: neckBottomY ... neckTopY)
-            let w = rng.nextCGFloat(in: 22...46)
-            let h = rng.nextCGFloat(in: 16...34)
+        // --- Smudge blotches scattered anywhere (3-5 per play) ---
+        let smudgeCount = 3 + rng.nextInt(bound: 3)
+        for _ in 0..<smudgeCount {
+            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
+            let w = rng.nextCGFloat(in: 18...44)
+            let h = rng.nextCGFloat(in: 14...32)
 
             let smudge = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
-            smudge.position = CGPoint(x: x, y: y)
+            smudge.position = pos
             smudge.zPosition = 7
             smudge.zRotation = rng.nextCGFloat(in: -0.8...0.8)
-            smudge.alpha = min(0.24 + CGFloat(playIndex) * 0.08, 0.58)
+            smudge.alpha = min(0.22 + CGFloat(playIndex) * 0.08, 0.56)
             smudge.name = "dirtStain"
             addChild(smudge)
             dirtNodes.append(smudge)
         }
 
-        // --- Rim grime spots around the lip (2-3 per play) ---
-        let rimSpotCount = 2 + rng.nextInt(bound: 2)
-        for _ in 0..<rimSpotCount {
-            let x = cx + rng.nextCGFloat(in: -neckW * 0.50 ... neckW * 0.50)
-            let y = neckTopY - rng.nextCGFloat(in: 0...18)
-            let r = rng.nextCGFloat(in: 4...9)
-
-            let spot = makeGrimeSpot(radius: r, rng: &rng)
-            spot.position = CGPoint(x: x, y: y)
-            spot.zPosition = 7
-            spot.alpha = min(0.28 + CGFloat(playIndex) * 0.07, 0.60)
-            spot.name = "dirtStain"
-            addChild(spot)
-            dirtNodes.append(spot)
-        }
-
-        // --- Bottom / corner dirt (grows each play) ---
-        addBottomDirt(playIndex: playIndex, rng: &rng)
-
-        // --- Rare mid-body stain: only ~20% chance, just 1 small mark ---
-        if rng.nextInt(bound: 10) < 2 {
-            let x = cx + rng.nextCGFloat(in: -jarW * 0.32 ... jarW * 0.32)
-            let y = jarBottomY + jarH * 0.25 + rng.nextCGFloat(in: 0 ... jarH * 0.35)
-            let r = rng.nextCGFloat(in: 4...8)
-
-            let spot = makeGrimeSpot(radius: r, rng: &rng)
-            spot.position = CGPoint(x: x, y: y)
-            spot.zPosition = 7
-            spot.alpha = min(0.18 + CGFloat(playIndex) * 0.06, 0.40)
-            spot.name = "dirtStain"
-            addChild(spot)
-            dirtNodes.append(spot)
-        }
-    }
-
-    /// Adds dirt buildup along the jar floor and into the lower corners.
-    private func addBottomDirt(playIndex: Int, rng: inout DirtRNG) {
-        let jarW = jarMaxX - jarMinX
-        let cx = (jarMinX + jarMaxX) / 2
-        let alpha = min(0.18 + CGFloat(playIndex) * 0.07, 0.52)
-
-        // Floor smudge — a wide, flat blotch along the bottom
-        let floorW = jarW * (0.22 + CGFloat(playIndex) * 0.09)
-        let floorH: CGFloat = 10 + CGFloat(playIndex) * 4
-        let floorDust = makeSmudgeBlotch(
-            size: CGSize(width: min(floorW, jarW * 0.65), height: floorH),
-            rng: &rng
-        )
-        floorDust.position = CGPoint(
-            x: cx + rng.nextCGFloat(in: -jarW * 0.06 ... jarW * 0.06),
-            y: jarBottomY + floorH * 0.5 + 8
-        )
-        floorDust.zPosition = 7
-        floorDust.alpha = alpha + 0.08
-        floorDust.name = "dirtStain"
-        addChild(floorDust)
-        dirtNodes.append(floorDust)
-
-        // Left corner — blotch + spots
-        let leftBlotch = makeSmudgeBlotch(
-            size: CGSize(width: rng.nextCGFloat(in: 18...30), height: rng.nextCGFloat(in: 14...24)),
-            rng: &rng
-        )
-        leftBlotch.position = CGPoint(
-            x: jarMinX + rng.nextCGFloat(in: 18...42),
-            y: jarBottomY + rng.nextCGFloat(in: 14...36)
-        )
-        leftBlotch.zPosition = 7
-        leftBlotch.zRotation = rng.nextCGFloat(in: -0.5...0.5)
-        leftBlotch.alpha = alpha + 0.06
-        leftBlotch.name = "dirtStain"
-        addChild(leftBlotch)
-        dirtNodes.append(leftBlotch)
-
-        let leftSpotCount = 1 + rng.nextInt(bound: 2)
-        for _ in 0..<leftSpotCount {
+        // --- Grime spots scattered anywhere (2-4 per play) ---
+        let spotCount = 2 + rng.nextInt(bound: 3)
+        for _ in 0..<spotCount {
+            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
             let r = rng.nextCGFloat(in: 4...10)
+
             let spot = makeGrimeSpot(radius: r, rng: &rng)
-            spot.position = CGPoint(
-                x: jarMinX + rng.nextCGFloat(in: 10...48),
-                y: jarBottomY + rng.nextCGFloat(in: 8...40)
-            )
+            spot.position = pos
             spot.zPosition = 7
-            spot.alpha = alpha + 0.05
+            spot.alpha = min(0.24 + CGFloat(playIndex) * 0.07, 0.55)
             spot.name = "dirtStain"
             addChild(spot)
             dirtNodes.append(spot)
         }
 
-        // Right corner — blotch + spots
-        let rightBlotch = makeSmudgeBlotch(
-            size: CGSize(width: rng.nextCGFloat(in: 18...30), height: rng.nextCGFloat(in: 14...24)),
-            rng: &rng
-        )
-        rightBlotch.position = CGPoint(
-            x: jarMaxX - rng.nextCGFloat(in: 18...42),
-            y: jarBottomY + rng.nextCGFloat(in: 14...36)
-        )
-        rightBlotch.zPosition = 7
-        rightBlotch.zRotation = rng.nextCGFloat(in: -0.5...0.5)
-        rightBlotch.alpha = alpha + 0.06
-        rightBlotch.name = "dirtStain"
-        addChild(rightBlotch)
-        dirtNodes.append(rightBlotch)
+        // --- Occasional larger smear anywhere (40% chance) ---
+        if rng.nextInt(bound: 10) < 4 {
+            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.15)
+            let w = rng.nextCGFloat(in: 28...52)
+            let h = rng.nextCGFloat(in: 10...22)
 
-        let rightSpotCount = 1 + rng.nextInt(bound: 2)
-        for _ in 0..<rightSpotCount {
-            let r = rng.nextCGFloat(in: 4...10)
-            let spot = makeGrimeSpot(radius: r, rng: &rng)
-            spot.position = CGPoint(
-                x: jarMaxX - rng.nextCGFloat(in: 10...48),
-                y: jarBottomY + rng.nextCGFloat(in: 8...40)
-            )
-            spot.zPosition = 7
-            spot.alpha = alpha + 0.05
-            spot.name = "dirtStain"
-            addChild(spot)
-            dirtNodes.append(spot)
+            let smear = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
+            smear.position = pos
+            smear.zPosition = 7
+            smear.zRotation = rng.nextCGFloat(in: -1.0...1.0)
+            smear.alpha = min(0.18 + CGFloat(playIndex) * 0.06, 0.45)
+            smear.name = "dirtStain"
+            addChild(smear)
+            dirtNodes.append(smear)
         }
     }
 
