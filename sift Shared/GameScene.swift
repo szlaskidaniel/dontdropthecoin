@@ -379,6 +379,8 @@ class GameScene: SKScene {
     private var stageWon = false
     private var gameOver = false
     private var isTransitioningShape = false
+    /// True while items are popping in at the start of a stage. Locks tilt gravity and interaction.
+    private var isSpawning = false
 
     // MARK: Vessel Morph
     private var morphInterpolator: VesselMorphInterpolator?
@@ -512,6 +514,7 @@ class GameScene: SKScene {
         crystalSpawnIndex = 0
         stageWon = false
         gameOver = false
+        isSpawning = false
         isTransitioningShape = false
 
         // Cancel any in-progress morph.
@@ -1738,8 +1741,11 @@ class GameScene: SKScene {
         let crystalCount = counts.crystals
         let junkCount = counts.junk
         let balloonCount = counts.balloons
-        let jarW = jarMaxX - jarMinX
-        let cx   = frame.midX
+        let cx = frame.midX
+
+        // Lock tilt, gravity, and interaction while items pop in.
+        isSpawning = true
+        physicsWorld.gravity = CGVector(dx: 0, dy: 0)
 
         // Build a shuffled list of all item types so positions are fully random
         var items: [EmojiType] = []
@@ -1748,24 +1754,118 @@ class GameScene: SKScene {
         items += Array(repeating: EmojiType.balloon, count: balloonCount)
         items.shuffle()
 
-        // Place all items at random positions throughout the jar
-        for type in items {
-            let x = CGFloat.random(in: (cx - jarW * 0.30)...(cx + jarW * 0.30))
-            let y = CGFloat.random(in: jarBottomY + 40 ... jarBottomY + 300)
-            placeEmoji(type: type, at: CGPoint(x: x, y: y))
+        // Place all items at non-overlapping positions inside the vessel silhouette.
+        // Each position is checked against all previously placed items so physics
+        // bodies never overlap and push each other apart on spawn.
+        let spawnYMin = jarBottomY + 40
+        let spawnYMax = min(jarTopY - 40, jarBottomY + 300)
+        let stagger: TimeInterval = 0.06
+        let spacing: CGFloat = 4  // minimum gap between physics circles
+
+        var placedPositions: [(CGPoint, CGFloat)] = []  // (position, radius)
+
+        for (index, type) in items.enumerated() {
+            let position = nonOverlappingSpawnPosition(
+                type: type,
+                placed: placedPositions,
+                cx: cx,
+                yMin: spawnYMin,
+                yMax: spawnYMax,
+                spacing: spacing
+            )
+            placedPositions.append((position, type.radius))
+            placeEmoji(type: type, at: position, spawnDelay: Double(index) * stagger)
         }
 
         // Spawn sticky webs (obstacle zones) — only from stage 10 onward
         if stage >= 10 {
             let webCount = min(stage - 9, 3)  // 1 web at stage 10, up to 3
             for _ in 0..<webCount {
-                let x = CGFloat.random(in: (cx - jarW * 0.25)...(cx + jarW * 0.25))
                 let y = CGFloat.random(in: jarBottomY + 80 ... jarBottomY + 220)
+                let halfW = jarHalfWidthAt(y: y)
+                let safeHalf = max(halfW - 10, 0)
+                let x = cx + CGFloat.random(in: -safeHalf...safeHalf)
                 placeWeb(at: CGPoint(x: x, y: y))
             }
         }
 
         viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount)
+
+        // After all items have popped in, show a brief "GO!" banner then unlock gameplay.
+        let popDuration: TimeInterval = 0.35
+        let totalSpawnTime = Double(items.count - 1) * stagger + popDuration
+        run(.sequence([
+            .wait(forDuration: totalSpawnTime + 0.1),
+            .run { [weak self] in self?.showGoBanner() }
+        ]))
+    }
+
+    /// Displays a brief "GO!" text that scales up, holds, then fades out, unlocking gameplay.
+    private func showGoBanner() {
+        let label = SKLabelNode(text: "GO!")
+        label.name = "banner"
+        label.fontName = "AvenirNext-Heavy"
+        label.fontSize = 64
+        label.fontColor = .white
+        label.position = CGPoint(x: frame.midX, y: frame.midY + 40)
+        label.zPosition = 20
+        label.setScale(0)
+        label.alpha = 0
+        addChild(label)
+
+        label.run(.sequence([
+            .group([
+                .fadeAlpha(to: 1.0, duration: 0.12),
+                .scale(to: 1.1, duration: 0.15)
+            ]),
+            .scale(to: 1.0, duration: 0.08),
+            .wait(forDuration: 0.3),
+            .group([
+                .fadeOut(withDuration: 0.2),
+                .scale(to: 1.4, duration: 0.2)
+            ]),
+            .run { [weak self] in
+                guard let self else { return }
+                self.isSpawning = false
+                self.physicsWorld.gravity = CGVector(dx: 0, dy: -self.gravityStrength)
+            },
+            .removeFromParent()
+        ]))
+    }
+
+    /// Finds a spawn position inside the jar that doesn't overlap any already-placed item.
+    private func nonOverlappingSpawnPosition(
+        type: EmojiType,
+        placed: [(CGPoint, CGFloat)],
+        cx: CGFloat,
+        yMin: CGFloat,
+        yMax: CGFloat,
+        spacing: CGFloat
+    ) -> CGPoint {
+        let maxAttempts = 60
+        for _ in 0..<maxAttempts {
+            let y = CGFloat.random(in: yMin...yMax)
+            let halfW = jarHalfWidthAt(y: y)
+            let inset = type.radius + 6
+            let safeHalf = max(halfW - inset, 0)
+            let x = cx + CGFloat.random(in: -safeHalf...safeHalf)
+            let candidate = CGPoint(x: x, y: y)
+
+            let overlaps = placed.contains { pos, radius in
+                let minDist = radius + type.radius + spacing
+                let dx = candidate.x - pos.x
+                let dy = candidate.y - pos.y
+                return dx * dx + dy * dy < minDist * minDist
+            }
+            if !overlaps { return candidate }
+        }
+        // Fallback: pick a valid position even if it overlaps (rare, many items in small jar)
+        let y = CGFloat.random(in: yMin...yMax)
+        let halfW = jarHalfWidthAt(y: y)
+        let inset = type.radius + 6
+        let safeHalf = max(halfW - inset, 0)
+        let x = cx + CGFloat.random(in: -safeHalf...safeHalf)
+        return CGPoint(x: x, y: y)
     }
 
     /// The current stage number (forwarded from the view model for difficulty scaling).
@@ -1789,7 +1889,7 @@ class GameScene: SKScene {
         }
     }
 
-    private func placeEmoji(type: EmojiType, at position: CGPoint) {
+    private func placeEmoji(type: EmojiType, at position: CGPoint, spawnDelay: TimeInterval = 0) {
         let texture = emojiTexture(for: type)
 
         let sprite = SKSpriteNode(texture: texture)
@@ -1838,6 +1938,32 @@ class GameScene: SKScene {
 
         sprite.physicsBody = body
         sprite.zPosition = 2
+
+        // Pop-in spawn animation: start invisible and with physics disabled,
+        // then pop in with a smooth elastic scale after a staggered delay.
+        if spawnDelay > 0 {
+            sprite.setScale(0)
+            sprite.alpha = 0
+            body.isDynamic = false
+
+            let popDuration: TimeInterval = 0.35
+            let popAction = SKAction.customAction(withDuration: popDuration) { node, elapsed in
+                let t = CGFloat(elapsed / popDuration)
+                // Damped elastic ease-out: overshoots to ~1.12 then settles smoothly
+                let scale = 1.0 - pow(2.72, -6.0 * t) * cos(t * .pi * 2.2)
+                node.setScale(scale)
+                // Quick smooth fade in over the first 20% of the animation
+                node.alpha = min(t / 0.2, 1.0)
+            }
+
+            sprite.run(.sequence([
+                .wait(forDuration: spawnDelay),
+                popAction,
+                .scale(to: 1.0, duration: 0), // ensure final scale is exactly 1
+                .run { body.isDynamic = true }
+            ]))
+        }
+
         addChild(sprite)
     }
 
@@ -2110,7 +2236,8 @@ class GameScene: SKScene {
                 self.releaseAllFromWebs()
             }
 
-            // --- Tilt-based gravity ---
+            // --- Tilt-based gravity (locked during spawn animation) ---
+            guard !self.isSpawning else { return }
             let gx = CGFloat(motion.gravity.x)
             let gy = CGFloat(motion.gravity.y)
             let projectedMagnitude = hypot(gx, gy)
@@ -2159,7 +2286,7 @@ class GameScene: SKScene {
             updateMorph(currentTime: currentTime)
             return
         }
-        guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape else { return }
+        guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape, !isSpawning else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
 
         // Timer ran out — game over
@@ -3008,7 +3135,7 @@ class GameScene: SKScene {
 extension GameScene: SKPhysicsContactDelegate {
 
     func didBegin(_ contact: SKPhysicsContact) {
-        guard isGameplayActive else { return }
+        guard isGameplayActive, !isSpawning else { return }
 
         let a = contact.bodyA.categoryBitMask
         let b = contact.bodyB.categoryBitMask
