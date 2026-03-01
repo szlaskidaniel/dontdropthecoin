@@ -1661,7 +1661,7 @@ class GameScene: SKScene {
         // bodies never overlap and push each other apart on spawn.
         let spawnYMin = jarBottomY + 40
         let spawnYMax = min(jarTopY - 40, jarBottomY + 300)
-        let stagger: TimeInterval = 0.06
+        let stagger: TimeInterval = 0.09
         let spacing: CGFloat = 4  // minimum gap between physics circles
 
         var placedPositions: [(CGPoint, CGFloat)] = []  // (position, radius)
@@ -1694,7 +1694,7 @@ class GameScene: SKScene {
         viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount)
 
         // After all items have popped in, show a brief "GO!" banner then unlock gameplay.
-        let popDuration: TimeInterval = 0.35
+        let popDuration: TimeInterval = 0.45
         let totalSpawnTime = Double(items.count - 1) * stagger + popDuration
         run(.sequence([
             .wait(forDuration: totalSpawnTime + 0.1),
@@ -1848,14 +1848,14 @@ class GameScene: SKScene {
             sprite.alpha = 0
             body.isDynamic = false
 
-            let popDuration: TimeInterval = 0.35
+            let popDuration: TimeInterval = 0.45
             let popAction = SKAction.customAction(withDuration: popDuration) { node, elapsed in
                 let t = CGFloat(elapsed / popDuration)
-                // Damped elastic ease-out: overshoots to ~1.12 then settles smoothly
-                let scale = 1.0 - pow(2.72, -6.0 * t) * cos(t * .pi * 2.2)
+                // Damped elastic ease-out: gentle overshoot then settles smoothly
+                let scale = 1.0 - pow(2.72, -5.0 * t) * cos(t * .pi * 2.0)
                 node.setScale(scale)
-                // Quick smooth fade in over the first 20% of the animation
-                node.alpha = min(t / 0.2, 1.0)
+                // Smooth fade in over the first 25% of the animation
+                node.alpha = min(t / 0.25, 1.0)
             }
 
             sprite.run(.sequence([
