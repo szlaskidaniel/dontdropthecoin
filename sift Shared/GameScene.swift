@@ -1700,10 +1700,10 @@ class GameScene: SKScene {
 
         // Special items: poop spawns from stage 4+, bomb from stage 6+
         // Each has a chance-based spawn (not guaranteed every stage)
-        if stage >= 1 && Int.random(in: 0..<3) < 2 {  // ~67% chance
+        if stage >= 4 && Int.random(in: 0..<3) < 2 {  // ~67% chance
             items.append(.poop)
         }
-        if stage >= 1 && Int.random(in: 0..<4) < 2 {  // ~50% chance
+        if stage >= 6 && Int.random(in: 0..<4) < 2 {  // ~50% chance
             items.append(.bomb)
         }
         // Second poop at high stages
