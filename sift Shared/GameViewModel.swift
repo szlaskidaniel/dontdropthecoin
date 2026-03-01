@@ -29,6 +29,10 @@ class GameViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(highScore, forKey: "highScore") }
     }
 
+    @Published var isMusicMuted: Bool {
+        didSet { UserDefaults.standard.set(isMusicMuted, forKey: "isMusicMuted") }
+    }
+
     /// Total junk count at the start of the current stage (set once per stage).
     @Published var totalJunkAtStart: Int = 0
     /// Total crystals at the start of the current stage (set once per stage).
@@ -64,6 +68,7 @@ class GameViewModel: ObservableObject {
 
     init() {
         self.highScore = UserDefaults.standard.integer(forKey: "highScore")
+        self.isMusicMuted = UserDefaults.standard.bool(forKey: "isMusicMuted")
     }
 
     /// Attempt to start a game. Returns `true` if the game was started,

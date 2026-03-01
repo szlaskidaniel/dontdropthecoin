@@ -376,6 +376,26 @@ struct MainMenuOverlay: View {
                 EnergyIndicator()
                     .padding(.top, 6)
 
+                // Mute music toggle
+                Button {
+                    viewModel.isMusicMuted.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: viewModel.isMusicMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(viewModel.isMusicMuted ? "Music Off" : "Music On")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(.ultraThinMaterial.opacity(0.3))
+                    )
+                }
+                .padding(.top, 4)
+
                 Spacer()
                     .frame(height: 60)
             }

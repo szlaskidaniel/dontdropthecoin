@@ -7,6 +7,7 @@ import SpriteKit
 import CoreImage
 import simd
 import AVFoundation
+import Combine
 
 #if os(iOS)
 import CoreMotion
@@ -331,9 +332,12 @@ class GameScene: SKScene {
 
     // MARK: Properties
 
-    weak var viewModel: GameViewModel?
+    weak var viewModel: GameViewModel? {
+        didSet { observeMusicMute() }
+    }
 
     private var bgMusicPlayer: AVAudioPlayer?
+    private var musicMuteObserver: AnyCancellable?
 
     #if os(iOS)
     private let motionManager = CMMotionManager()
@@ -553,7 +557,9 @@ class GameScene: SKScene {
             player.numberOfLoops = -1 // loop indefinitely
             player.volume = 0.4
             player.prepareToPlay()
-            player.play()
+            if viewModel?.isMusicMuted != true {
+                player.play()
+            }
             bgMusicPlayer = player
         } catch {
             print("Background music failed to load: \(error)")
@@ -563,6 +569,31 @@ class GameScene: SKScene {
     private func stopBackgroundMusic() {
         bgMusicPlayer?.stop()
         bgMusicPlayer = nil
+    }
+
+    private func applyMusicMuteState(_ muted: Bool) {
+        guard let player = bgMusicPlayer else { return }
+        if muted {
+            player.pause()
+        } else {
+            if !player.isPlaying {
+                player.play()
+            }
+        }
+    }
+
+    private func observeMusicMute() {
+        musicMuteObserver?.cancel()
+        guard let vm = viewModel else { return }
+        // Apply current state immediately
+        applyMusicMuteState(vm.isMusicMuted)
+        // Observe future changes
+        musicMuteObserver = vm.$isMusicMuted
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] muted in
+                self?.applyMusicMuteState(muted)
+            }
     }
 
     // MARK: - Dynamic Lighting
@@ -2305,8 +2336,8 @@ class GameScene: SKScene {
         
         let banner = SKLabelNode(text: isPerfectStage ? "PERFECT LEVEL!" : "STAGE CLEAR!")
         banner.name       = "banner"
-        banner.fontName   = "SFProRounded-Heavy"
-        banner.fontSize   = 40
+        banner.fontName   = "AvenirNextCondensed-Heavy"
+        banner.fontSize   = 44
         banner.fontColor  = isPerfectStage
             ? SKColor(red: 1.0, green: 0.9, blue: 0.3, alpha: 1)
             : SKColor(red: 0.3, green: 0.95, blue: 1.0, alpha: 1)
@@ -2327,8 +2358,8 @@ class GameScene: SKScene {
         if isPerfectStage {
             let perfectLabel = SKLabelNode(text: "NO GEMS LOST")
             perfectLabel.name = "banner"
-            perfectLabel.fontName = "SFProRounded-Bold"
-            perfectLabel.fontSize = 24
+            perfectLabel.fontName = "AvenirNextCondensed-DemiBold"
+            perfectLabel.fontSize = 26
             perfectLabel.fontColor = SKColor(red: 1.0, green: 0.94, blue: 0.68, alpha: 1)
             perfectLabel.position = CGPoint(x: frame.midX, y: frame.midY + 160) //116
             perfectLabel.zPosition = 20
@@ -2413,8 +2444,8 @@ class GameScene: SKScene {
 
                 let scoreLabel = SKLabelNode(text: "+\(points)")
                 scoreLabel.name = "banner"
-                scoreLabel.fontName = "SFProRounded-Heavy"
-                scoreLabel.fontSize = 28
+                scoreLabel.fontName = "AvenirNextCondensed-Heavy"
+                scoreLabel.fontSize = 30
                 scoreLabel.fontColor = SKColor(red: 0.98, green: 0.92, blue: 0.35, alpha: 1.0)
                 scoreLabel.position = CGPoint(x: point.x, y: point.y + 12)
                 scoreLabel.zPosition = 24
@@ -2451,8 +2482,8 @@ class GameScene: SKScene {
 
         let glow = SKLabelNode(text: "GAME OVER")
         glow.name       = "banner"
-        glow.fontName   = "SFProRounded-Heavy"
-        glow.fontSize   = 62
+        glow.fontName   = "AvenirNextCondensed-Heavy"
+        glow.fontSize   = 66
         glow.fontColor  = SKColor(red: 1.0, green: 0.26, blue: 0.22, alpha: 0.35)
         glow.position   = center
         glow.zPosition  = 19
@@ -2462,8 +2493,8 @@ class GameScene: SKScene {
 
         let shadow = SKLabelNode(text: "GAME OVER")
         shadow.name       = "banner"
-        shadow.fontName   = "SFProRounded-Heavy"
-        shadow.fontSize   = 60
+        shadow.fontName   = "AvenirNextCondensed-Heavy"
+        shadow.fontSize   = 64
         shadow.fontColor  = SKColor(white: 0.0, alpha: 0.55)
         shadow.position   = CGPoint(x: center.x, y: center.y - 4)
         shadow.zPosition  = 19.5
@@ -2471,10 +2502,10 @@ class GameScene: SKScene {
         shadow.setScale(0.5)
         addChild(shadow)
 
-        let banner = SKLabelNode(text: "Game Over")
+        let banner = SKLabelNode(text: "GAME OVER")
         banner.name       = "banner"
-        banner.fontName   = "SFProRounded-Heavy"
-        banner.fontSize   = 60
+        banner.fontName   = "AvenirNextCondensed-Heavy"
+        banner.fontSize   = 64
         banner.fontColor  = SKColor(red: 1, green: 0.3, blue: 0.25, alpha: 1)
         banner.position   = center
         banner.zPosition  = 20
