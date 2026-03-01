@@ -28,6 +28,7 @@ struct ContentView: View {
                 options: [.shouldCullNonVisibleNodes, .allowsTransparency]
             )
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
                 .onAppear {
                     scene.viewModel = viewModel
                     // Request 120Hz ProMotion refresh rate
@@ -127,19 +128,11 @@ struct GameHUD: View {
         GeometryReader { geo in
             VStack(spacing: 10) {
                 HStack {
-                    Menu {
-                        Button(role: .destructive) {
-                            showExitConfirmation = true
-                        } label: {
-                            Label("Return to Home Screen", systemImage: "house.fill")
-                        }
+                    Button {
+                        showExitConfirmation = true
                     } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Menu")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        }
+                        Image(systemName: "house.fill")
+                            .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(hudTextPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
@@ -151,10 +144,10 @@ struct GameHUD: View {
                                         .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
                                 )
                         )
+                        .padding(10)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.leading, 14)
-                    .padding(.top, 4)
-                    .offset(y: -(geo.safeAreaInsets.top))
+                    .padding(.leading, 4)
 
                     Spacer(minLength: 12)
 
@@ -176,7 +169,6 @@ struct GameHUD: View {
                     .frame(width: 130, alignment: .trailing)
                     .padding(.trailing, 2)
                     .padding(.top, 4)
-                    .offset(y: -(geo.safeAreaInsets.top))
                 }
                 .frame(maxWidth: .infinity)
 
@@ -252,7 +244,7 @@ struct GameHUD: View {
                         .animation(.spring(response: 0.45, dampingFraction: 0.82), value: isScoreExpanded)
                 }
             }
-            .padding(.top, geo.safeAreaInsets.top + 10)
+            .padding(.top, 10)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .top)
