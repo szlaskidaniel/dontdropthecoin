@@ -1679,16 +1679,17 @@ class GameScene: SKScene {
             placeEmoji(type: type, at: position, spawnDelay: Double(index) * stagger)
         }
 
-        // Spawn sticky webs (obstacle zones) — only from stage 10 onward
-        if stage >= 10 {
-            let webCount = min(stage - 9, 3)  // 1 web at stage 10, up to 3
-            for _ in 0..<webCount {
-                let y = CGFloat.random(in: jarBottomY + 80 ... jarBottomY + 220)
-                let halfW = jarHalfWidthAt(y: y)
-                let safeHalf = max(halfW - 10, 0)
-                let x = cx + CGFloat.random(in: -safeHalf...safeHalf)
-                placeWeb(at: CGPoint(x: x, y: y))
-            }
+        // Spawn a single sticky web stuck to a wall — only from stage 10 onward.
+        // The web has a 60 % chance of appearing each stage.
+        if stage >= 10 && Int.random(in: 0..<5) < 3 {
+            // Pick a Y in the lower-to-mid portion of the jar (never near the top)
+            let webY = CGFloat.random(in: jarBottomY + 60 ... jarBottomY + (jarTopY - jarBottomY) * 0.55)
+            let halfW = jarHalfWidthAt(y: webY)
+            // Stick to left or right wall with a small inset so the web overlaps the border
+            let wallInset: CGFloat = 12
+            let side: CGFloat = Bool.random() ? 1 : -1
+            let webX = cx + side * max(halfW - wallInset, 0)
+            placeWeb(at: CGPoint(x: webX, y: webY), wallSide: side)
         }
 
         viewModel?.setItemCounts(crystals: crystalCount, junk: junkCount + balloonCount)
@@ -2011,30 +2012,44 @@ class GameScene: SKScene {
 
     // MARK: - Sticky Web
 
-    private func placeWeb(at position: CGPoint) {
+    /// Place a spider web stuck to the jar wall.
+    /// `wallSide` is -1 for left wall, +1 for right wall.
+    private func placeWeb(at position: CGPoint, wallSide: CGFloat = 1) {
         let webRadius: CGFloat = 50
 
-        // Visual: 🕸️ emoji with a semi-transparent radial glow behind it
         let webNode = SKNode()
         webNode.name = "web"
         webNode.position = position
         webNode.zPosition = 1
 
-        // Radial glow background
+        // --- Soft radial halo (two-layer glow for a friendly, ethereal look) ---
+
+        // Outer soft halo — large, very faint, gives a warm glow aura
+        let outerHalo = SKShapeNode(circleOfRadius: webRadius * 1.4)
+        outerHalo.fillColor = SKColor(red: 0.85, green: 0.80, blue: 1.0, alpha: 0.04)
+        outerHalo.strokeColor = .clear
+        outerHalo.lineWidth = 0
+        outerHalo.glowWidth = 12
+        outerHalo.name = "webOuterHalo"
+        outerHalo.alpha = 0.7
+        webNode.addChild(outerHalo)
+
+        // Inner glow — subtle, tinted with a slight lavender
         let glow = SKShapeNode(circleOfRadius: webRadius)
-        glow.fillColor = SKColor(white: 1.0, alpha: 0.06)
-        glow.strokeColor = SKColor(white: 1.0, alpha: 0.15)
-        glow.lineWidth = 1.5
-        glow.glowWidth = 4
+        glow.fillColor = SKColor(red: 0.90, green: 0.85, blue: 1.0, alpha: 0.06)
+        glow.strokeColor = SKColor(red: 0.80, green: 0.75, blue: 1.0, alpha: 0.12)
+        glow.lineWidth = 1.0
+        glow.glowWidth = 6
         glow.name = "webGlow"
         webNode.addChild(glow)
 
-        // Emoji label
+        // Emoji label — flip horizontally if on the right wall so the web faces inward
         let label = SKLabelNode(text: "🕸️")
-        label.fontSize = 56
+        label.fontSize = 52
         label.verticalAlignmentMode = .center
         label.horizontalAlignmentMode = .center
-        label.alpha = 0.85
+        label.alpha = 0.75
+        label.xScale = wallSide < 0 ? 1.0 : -1.0  // mirror for right wall
         webNode.addChild(label)
 
         // Sensor physics body — detects overlap but does not collide
@@ -2045,17 +2060,25 @@ class GameScene: SKScene {
         body.contactTestBitMask = PhysicsCategory.allEmoji
         webNode.physicsBody = body
 
-        // Subtle idle animation
+        // Gentle breathing animation (slower and subtler than before)
         let pulse = SKAction.sequence([
-            .scale(to: 1.06, duration: 1.8),
-            .scale(to: 0.94, duration: 1.8)
+            .scale(to: 1.04, duration: 2.4),
+            .scale(to: 0.97, duration: 2.4)
         ])
         webNode.run(.repeatForever(pulse))
+
+        // Outer halo fades in and out gently, offset from the main pulse
+        let haloFade = SKAction.sequence([
+            .fadeAlpha(to: 0.9, duration: 3.0),
+            .fadeAlpha(to: 0.5, duration: 3.0)
+        ])
+        outerHalo.run(.repeatForever(haloFade))
 
         addChild(webNode)
     }
 
     /// Capture a node into a web: kill velocity, disable gravity, drift toward web center.
+    /// The drift target is clamped inside the jar so items never clip through the walls.
     private func captureInWeb(_ node: SKNode, web: SKNode) {
         guard stuckNodes[node] == nil else { return }  // already stuck
         guard let pb = node.physicsBody else { return }
@@ -2071,8 +2094,9 @@ class GameScene: SKScene {
         pb.affectedByGravity = false
         pb.linearDamping = 8.0  // heavy drag to keep it stuck
 
-        // Drift node toward web center to look "anchored"
-        let drift = SKAction.move(to: web.position, duration: 0.6)
+        // Drift node toward web center, but clamped safely inside the jar
+        let safeTarget = clampInsideJar(web.position, insetFraction: 0.12)
+        let drift = SKAction.move(to: safeTarget, duration: 0.6)
         drift.timingMode = .easeOut
         node.run(drift, withKey: "webDrift")
 
@@ -2238,6 +2262,12 @@ class GameScene: SKScene {
             guard let pb = node.physicsBody else { continue }
             pb.velocity = CGVector(dx: pb.velocity.dx * 0.3, dy: pb.velocity.dy * 0.3)
             pb.angularVelocity *= 0.3
+
+            // Safety: clamp stuck node inside the jar so it never escapes through the wall
+            let clamped = clampInsideJar(node.position, insetFraction: 0.06)
+            if clamped != node.position {
+                node.position = clamped
+            }
 
             // Web stretching visual: scale the web glow based on distance between node and web center
             let dist = hypot(node.position.x - web.position.x,
