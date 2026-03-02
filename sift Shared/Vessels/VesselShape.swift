@@ -60,9 +60,8 @@ protocol VesselShape {
 
 /// Maps stage numbers to vessel shapes.
 enum VesselShapeRegistry {
-    /// Number of stages each shape is used before switching.
-    /// Change to 5 for production; 2 for testing.
-    static let stagesPerShape = 2
+    /// Number of stages each shape is used before switching.    
+    static let stagesPerShape = 5
 
     /// All vessel shapes in order of appearance (cycles after the last).
     static let shapes: [VesselShape] = [

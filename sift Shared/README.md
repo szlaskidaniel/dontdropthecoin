@@ -9,11 +9,6 @@ Next items to implement / Fix as MVP:
 
 
 
-Add sounds in game , click menu buttons, diamonds "ching" between and on the bottle
-
-Change order for different flasks
-Change flasks every 5th level
-
 Desing AppIcon + Lunch Screen
 
 Use smoke (more white/gray) as a dirt ?
