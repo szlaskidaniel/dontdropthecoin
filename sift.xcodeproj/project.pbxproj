@@ -22,6 +22,7 @@
 				GameScene.swift,
 				GameViewModel.swift,
 				music/bg_music.mp3,
+				SoundEffects.swift,
 				Vessels/BeakerVessel.swift,
 				Vessels/BottleVessel.swift,
 				Vessels/ErlenmeyerVessel.swift,

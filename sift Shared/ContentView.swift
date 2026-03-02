@@ -50,6 +50,7 @@ struct ContentView: View {
             // ── Main Menu overlay ────────────────────────────────────
             if viewModel.gameState == .menu {
                 MainMenuOverlay(viewModel: viewModel) {
+                    SoundEffects.shared.playMenuClick()
                     if viewModel.startGame() {
                         scene.updateDirtOverlays()
                         scene.beginGame()
@@ -62,6 +63,7 @@ struct ContentView: View {
             // ── Game Over overlay ────────────────────────────────────
             if viewModel.gameState == .gameOver {
                 GameOverOverlay(viewModel: viewModel) {
+                    SoundEffects.shared.playMenuClick()
                     if viewModel.startGame() {
                         scene.updateDirtOverlays()
                         scene.beginGame()
@@ -134,6 +136,7 @@ struct GameHUD: View {
             VStack(spacing: 10) {
                 HStack {
                     Button {
+                        SoundEffects.shared.playMenuClick()
                         showExitConfirmation = true
                     } label: {
                         Image(systemName: "house.fill")
@@ -284,9 +287,12 @@ struct GameHUD: View {
             titleVisibility: .visible
         ) {
             Button("Return to Home Screen", role: .destructive) {
+                SoundEffects.shared.playMenuClick()
                 viewModel.returnToMenuFromGameplay()
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {
+                SoundEffects.shared.playMenuClick()
+            }
         } message: {
             Text("Your current round progress will be lost.")
         }
@@ -375,6 +381,7 @@ struct MainMenuOverlay: View {
 
                 // Mute music toggle
                 Button {
+                    SoundEffects.shared.playMenuClick()
                     viewModel.isMusicMuted.toggle()
                 } label: {
                     HStack(spacing: 6) {
@@ -514,6 +521,7 @@ struct EnergyIndicator: View {
             }
 
             Button {
+                SoundEffects.shared.playMenuClick()
                 showInfo = true
             } label: {
                 Image(systemName: "info.circle")
@@ -565,6 +573,7 @@ private struct EnergyInfoSheet: View {
                 Spacer()
 
                 Button {
+                    SoundEffects.shared.playMenuClick()
                     dismiss()
                 } label: {
                     Text("Got it")
@@ -678,6 +687,7 @@ struct GameOverOverlay: View {
                 .padding(.horizontal, 50)
 
                 Button {
+                    SoundEffects.shared.playMenuClick()
                     viewModel.gameState = .menu
                 } label: {
                     Text("Back to Main Menu")
@@ -745,6 +755,7 @@ struct DailyLimitOverlay: View {
 
                     // "Clean the Jar" IAP button
                     Button {
+                        SoundEffects.shared.playMenuClick()
                         // TODO: Trigger StoreKit IAP purchase flow
                         // For now, immediately clean (placeholder)
                         scene.removeDirtExplosion()
@@ -780,6 +791,7 @@ struct DailyLimitOverlay: View {
 
                     // "Watch Ad to Clean" button
                     Button {
+                        SoundEffects.shared.playMenuClick()
                         // TODO: Trigger rewarded ad flow
                         // For now, immediately clean (placeholder)
                         scene.removeDirtExplosion()
@@ -808,6 +820,7 @@ struct DailyLimitOverlay: View {
 
                     // Back to menu
                     Button {
+                        SoundEffects.shared.playMenuClick()
                         scene.removeDirtExplosion()
                         viewModel.gameState = .menu
                     } label: {

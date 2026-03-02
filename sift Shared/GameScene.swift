@@ -1707,7 +1707,7 @@ class GameScene: SKScene {
         if stage >= 4 && Int.random(in: 0..<3) < 2 {  // ~67% chance
             items.append(.poop)
         }
-        if stage >= 1 && Int.random(in: 0..<4) < 2 {  // ~50% chance
+        if stage >= 6 && Int.random(in: 0..<4) < 2 {  // ~50% chance
             items.append(.bomb)
         }
         // Second poop at high stages
@@ -2618,6 +2618,7 @@ class GameScene: SKScene {
     }
 
     private func showGameOverEffect() {
+        SoundEffects.shared.playGameOver()
         let center = CGPoint(x: frame.midX, y: frame.midY + 120)
 
         let glow = SKLabelNode(text: "GAME OVER")
@@ -4172,6 +4173,13 @@ extension GameScene: SKPhysicsContactDelegate {
         // --- Crystal-wall haptics (.heavy) + impact flash ---
         let crystalHitWall = (a == PhysicsCategory.crystal && b == PhysicsCategory.wall) ||
                              (a == PhysicsCategory.wall && b == PhysicsCategory.crystal)
+        let crystalHitCrystal = (a == PhysicsCategory.crystal && b == PhysicsCategory.crystal)
+
+        if crystalHitCrystal {
+            SoundEffects.shared.playCrystalTap(impulse: impulse)
+        } else if crystalHitWall {
+            SoundEffects.shared.playCrystalGlass(impulse: impulse)
+        }
 
         if crystalHitWall {
             #if os(iOS)

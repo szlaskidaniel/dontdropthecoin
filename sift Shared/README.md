@@ -5,14 +5,30 @@
 //  Created by Daniel on 28/02/2026.
 //
 
-Next items to implement / Fix:
-
-// Special items: poop spawns from stage 4+, bomb from stage 6+
+Next items to implement / Fix as MVP:
 
 
-Add sounds in game , clikc menu buttons, diamonds "ching" between and on the bottle
+
+Add sounds in game , click menu buttons, diamonds "ching" between and on the bottle
+
+Change order for different flasks
+Change flasks every 5th level
+
+Desing AppIcon + Lunch Screen
+
 Use smoke (more white/gray) as a dirt ?
+Include Leaderbords
+Complete InApp purchases
 
+
+
+
+
+
+
+
+
+Maybe after LIVE release:
 
 New emoji:
 

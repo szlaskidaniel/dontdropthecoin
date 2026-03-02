@@ -132,6 +132,7 @@ class GameViewModel: ObservableObject {
 
     func stageCleared() {
         stopTimer()
+        SoundEffects.shared.playRoundCleared()
 
         // Stage multiplier: later stages are worth more
         let stageMultiplier = 1.0 + Double(stage - 1) * 0.15
@@ -169,6 +170,7 @@ class GameViewModel: ObservableObject {
     private func startTally() {
         stopTally()
         isTallying = true
+        SoundEffects.shared.startScoreCounterLoop()
 
         // Tick interval adapts so the tally always takes ~2 seconds total
         let ticks = timeRemaining
@@ -191,6 +193,7 @@ class GameViewModel: ObservableObject {
         tallyTimer?.invalidate()
         tallyTimer = nil
         isTallying = false
+        SoundEffects.shared.stopScoreCounterLoop()
     }
 
     func nextStage() {
