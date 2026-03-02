@@ -591,6 +591,14 @@ class GameScene: SKScene {
         stopBackgroundMusic()
     }
 
+    /// Clears transient status labels (e.g. GAME OVER banners) when returning to menu overlays.
+    func clearTransientStatusText() {
+        children.filter { $0.name == "banner" }.forEach { node in
+            node.removeAllActions()
+            node.removeFromParent()
+        }
+    }
+
     // MARK: - Background Music
 
     private func startBackgroundMusic() {

@@ -85,6 +85,11 @@ struct ContentView: View {
         }
         .background(Color(red: 0.10, green: 0.03, blue: 0.14))
         .animation(.easeInOut(duration: 0.35), value: viewModel.gameState)
+        .onChange(of: viewModel.gameState) { _, newState in
+            if newState == .menu {
+                scene.clearTransientStatusText()
+            }
+        }
     }
 }
 
