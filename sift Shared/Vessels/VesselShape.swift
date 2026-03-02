@@ -67,10 +67,11 @@ enum VesselShapeRegistry {
     /// All vessel shapes in order of appearance (cycles after the last).
     static let shapes: [VesselShape] = [
         BottleVessel(),
-        BeakerVessel(),
         ErlenmeyerVessel(),
         RoundFlaskVessel(),
         TallFlaskVessel(),
+        BeakerVessel(), // wide open
+        
     ]
 
     /// Returns the vessel shape for the given stage (1-based).
