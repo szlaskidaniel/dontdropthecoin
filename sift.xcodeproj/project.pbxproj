@@ -22,6 +22,8 @@
 				GameScene.swift,
 				GameViewModel.swift,
 				music/bg_music.mp3,
+				music/game_over.wav,
+				music/lvl_completed.wav,
 				SoundEffects.swift,
 				Vessels/BeakerVessel.swift,
 				Vessels/BottleVessel.swift,

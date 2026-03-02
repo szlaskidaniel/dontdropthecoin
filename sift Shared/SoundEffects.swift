@@ -41,8 +41,8 @@ final class SoundEffects: NSObject, AVAudioPlayerDelegate {
         menuClickData = SoundEffects.makeMenuClickWAV()
         crystalTapData = SoundEffects.makeCrystalTapWAV()
         crystalGlassData = SoundEffects.makeCrystalGlassWAV()
-        roundClearedData = SoundEffects.makeRoundClearedWAV()
-        gameOverData = SoundEffects.makeGameOverWAV()
+        roundClearedData = SoundEffects.loadBundleWAV(named: "lvl_completed")
+        gameOverData = SoundEffects.loadBundleWAV(named: "game_over")
         scoreCounterData = SoundEffects.makeScoreCounterWAV()
         super.init()
         configurePlayerPools()
@@ -236,74 +236,13 @@ final class SoundEffects: NSObject, AVAudioPlayerDelegate {
         return makeWAV(from: samples, sampleRate: sampleRate)
     }
 
-    private static func makeRoundClearedWAV() -> Data {
-        let sampleRate = 44_100
-        let duration = 0.42
-        let sampleCount = Int(Double(sampleRate) * duration)
-
-        var samples = [Float](repeating: 0, count: sampleCount)
-        for i in 0..<sampleCount {
-            let t = Double(i) / Double(sampleRate)
-            let envelope = Float(exp(-t * 5.5))
-
-            let noteA = sin(2.0 * Double.pi * 1_046.5 * t)
-            let noteB = 0.70 * sin(2.0 * Double.pi * 1_318.5 * t)
-            let noteC = 0.45 * sin(2.0 * Double.pi * 1_568.0 * t)
-            let sparkle = 0.06 * sin(2.0 * Double.pi * 3_600.0 * t)
-
-            samples[i] = Float((noteA + noteB + noteC + sparkle) * 0.22) * envelope
+    private static func loadBundleWAV(named name: String) -> Data {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav"),
+              let data = try? Data(contentsOf: url) else {
+            assertionFailure("Missing sound file: \(name).wav")
+            return Data()
         }
-
-        return makeWAV(from: samples, sampleRate: sampleRate)
-    }
-
-    /// Game over: glass shattering — crack, low resonance, debris scattering down.
-    private static func makeGameOverWAV() -> Data {
-        let sampleRate = 44_100
-        let duration = 1.3
-        let sampleCount = Int(Double(sampleRate) * duration)
-
-        // Deterministic pseudo-random for consistent sound
-        var seed: UInt64 = 48271
-
-        var samples = [Float](repeating: 0, count: sampleCount)
-        for i in 0..<sampleCount {
-            let t = Double(i) / Double(sampleRate)
-
-            // --- Phase 1: initial crack (0–0.08s) — sharp burst of noise ---
-            let crackEnv = Float(exp(-t * 35.0))
-            seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            let noise = Float(Int64(bitPattern: seed) % 32768) / 32768.0
-            let crack = noise * crackEnv * 0.55
-
-            // --- Phase 2: glass resonance (0–0.6s) — mid-low shards ringing out ---
-            let ringAttack = Float(min(t * 50.0, 1.0))
-            let shard1 = sin(2.0 * Double.pi * 680.0 * t) * exp(-t * 4.0)
-            let shard2 = sin(2.0 * Double.pi * 1_100.0 * t) * exp(-t * 6.0)
-            let shard3 = sin(2.0 * Double.pi * 1_520.0 * t) * exp(-t * 8.0)
-            let shard4 = sin(2.0 * Double.pi * 440.0 * t) * exp(-t * 3.5)
-            let ring = Float((shard1 * 0.30 + shard2 * 0.22 + shard3 * 0.12 + shard4 * 0.28) * 0.38) * ringAttack
-
-            // --- Phase 3: heavy thud (0–0.4s) — the jar hitting the ground ---
-            let thudEnv = Float(exp(-t * 6.0))
-            let thud = Float(sin(2.0 * Double.pi * 72.0 * t) * 0.32) * thudEnv
-
-            // --- Phase 4: debris scatter (0.1–1.3s) — glass pieces tumbling, pitch dropping ---
-            let debrisOnset = max(t - 0.08, 0.0)
-            let debrisEnv = Float(min(debrisOnset * 8.0, 1.0) * exp(-debrisOnset * 2.8))
-            // Frequencies that sweep downward — pieces falling and settling
-            let sweep1 = sin(2.0 * Double.pi * (900.0 - debrisOnset * 320.0) * t)
-            let sweep2 = sin(2.0 * Double.pi * (620.0 - debrisOnset * 200.0) * t)
-            // Scattered noise — gritty debris texture
-            seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            let debrisNoise = Float(Int64(bitPattern: seed) % 32768) / 32768.0
-            let debris = Float(sweep1 * 0.14 + sweep2 * 0.10) * debrisEnv
-                       + debrisNoise * debrisEnv * 0.12
-
-            samples[i] = crack + ring + thud + debris
-        }
-
-        return makeWAV(from: samples, sampleRate: sampleRate)
+        return data
     }
 
     private static func makeScoreCounterWAV() -> Data {
