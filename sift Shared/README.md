@@ -7,11 +7,12 @@
 
 Next items to implement / Fix as MVP:
 
+Still find a better bg_music 
+FInd a better game over sounds
 
 
 Desing AppIcon + Lunch Screen
 
-Use smoke (more white/gray) as a dirt ?
 Include Leaderbords
 Complete InApp purchases
 
