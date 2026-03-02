@@ -59,7 +59,7 @@ final class SoundEffects: NSObject, AVAudioPlayerDelegate {
         let now = CACurrentMediaTime()
         guard now - lastMenuClickTime > 0.05 else { return }
         lastMenuClickTime = now
-        play(.menuClick, volume: 0.34, allowSteal: false)
+        play(.menuClick, volume: 0.28, allowSteal: false)
     }
 
     /// Crystal-on-crystal: a delicate, bright gem clink.
@@ -168,16 +168,20 @@ final class SoundEffects: NSObject, AVAudioPlayerDelegate {
 
     private static func makeMenuClickWAV() -> Data {
         let sampleRate = 44_100
-        let duration = 0.07
+        let duration = 0.06
         let sampleCount = Int(Double(sampleRate) * duration)
 
         var samples = [Float](repeating: 0, count: sampleCount)
         for i in 0..<sampleCount {
             let t = Double(i) / Double(sampleRate)
-            let envelope = Float(exp(-t * 28.0))
-            let primary = sin(2.0 * Double.pi * 1_240.0 * t)
-            let accent = 0.45 * sin(2.0 * Double.pi * 1_860.0 * t)
-            samples[i] = Float((primary + accent) * 0.42) * envelope
+            // Soft attack so it doesn't pop, gentle decay
+            let attack = min(t * 200.0, 1.0)
+            let envelope = Float(attack * exp(-t * 34.0))
+            // Lower, rounder tone — a gentle "pop"
+            let primary = sin(2.0 * Double.pi * 780.0 * t)
+            let warmth = 0.30 * sin(2.0 * Double.pi * 520.0 * t)
+            let air = 0.12 * sin(2.0 * Double.pi * 1_400.0 * t)
+            samples[i] = Float((primary + warmth + air) * 0.18) * envelope
         }
 
         return makeWAV(from: samples, sampleRate: sampleRate)
