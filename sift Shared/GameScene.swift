@@ -1703,7 +1703,7 @@ class GameScene: SKScene {
         if stage >= 4 && Int.random(in: 0..<3) < 2 {  // ~67% chance
             items.append(.poop)
         }
-        if stage >= 6 && Int.random(in: 0..<4) < 2 {  // ~50% chance
+        if stage >= 1 && Int.random(in: 0..<4) < 2 {  // ~50% chance
             items.append(.bomb)
         }
         // Second poop at high stages
@@ -3612,9 +3612,11 @@ class GameScene: SKScene {
         removePoopGlueFor(node: bombNode)
         stopBombHiss()
 
-        // --- Strike 3 freeze-frame: brief physics pause for dramatic tension ---
+        // --- Strike 3 slow-motion buildup: smooth ramp for dramatic tension ---
         let savedSpeed = physicsWorld.speed
-        physicsWorld.speed = 0
+
+        // Slow physics to 10% for a brief dramatic moment (no hard freeze)
+        physicsWorld.speed = savedSpeed * 0.1
 
         // Stop all bomb visual actions and flash white
         bombNode.removeAllActions()
@@ -3623,28 +3625,37 @@ class GameScene: SKScene {
             sprite.color = .white
         }
 
-        // White flash overlay on the bomb during freeze
-        let freezeFlash = SKShapeNode(circleOfRadius: 30)
-        freezeFlash.fillColor = SKColor(red: 1.0, green: 1.0, blue: 0.9, alpha: 0.7)
-        freezeFlash.strokeColor = .clear
-        freezeFlash.position = center
-        freezeFlash.zPosition = 20
-        freezeFlash.blendMode = .add
-        addChild(freezeFlash)
+        // Growing glow overlay on the bomb during slow-mo
+        let slowMoGlow = SKShapeNode(circleOfRadius: 15)
+        slowMoGlow.fillColor = SKColor(red: 1.0, green: 1.0, blue: 0.9, alpha: 0.4)
+        slowMoGlow.strokeColor = .clear
+        slowMoGlow.position = center
+        slowMoGlow.zPosition = 20
+        slowMoGlow.blendMode = .add
+        slowMoGlow.setScale(1.0)
+        addChild(slowMoGlow)
 
-        // Heavy "boom" haptic during freeze
+        // Animate the glow expanding during slow-mo
+        slowMoGlow.run(.sequence([
+            .group([
+                .scale(to: 2.5, duration: 0.3),
+                .fadeAlpha(to: 0.8, duration: 0.3)
+            ])
+        ]))
+
+        // Heavy "boom" haptic at start of slow-mo
         #if os(iOS)
         let heavyImpact = UIImpactFeedbackGenerator(style: .heavy)
         heavyImpact.prepare()
         heavyImpact.impactOccurred(intensity: 1.0)
         #endif
 
-        // After 0.5s freeze-frame, resume physics and detonate
+        // After brief slow-mo, ramp back to full speed and detonate
         run(.sequence([
-            .wait(forDuration: 0.5),
+            .wait(forDuration: 0.3),
             .run { [weak self] in
                 guard let self else { return }
-                freezeFlash.removeFromParent()
+                slowMoGlow.removeFromParent()
                 self.physicsWorld.speed = savedSpeed
 
                 // BOOM sound + visual explosion

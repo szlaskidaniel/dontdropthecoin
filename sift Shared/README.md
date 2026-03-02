@@ -5,25 +5,32 @@
 //  Created by Daniel on 28/02/2026.
 //
 
+Next items to implement / Fix:
+
+// Special items: poop spawns from stage 4+, bomb from stage 6+
+
+Why when it's detonates - I see like a game freeze ?
+Ignited bomb should have a trail of smoke behind
+After explosion - dust / cover inside jar area for 3 seconds
+
+replace few emoji add rock/stone,  rmeove books, add paperclip, śruba ?
 
 
-Objective: Transform the game's core container (the Jar) from a static object into a dynamic, "living" element of the gameplay. I want to implement a progression system that rewards players with visual and physical variety.
+New emoji:
 
-1. The Milestone Morph (Every 2 Levels):
+    1. 🐱 Kot (Cat) – Nieobliczalny pasażer
 
-The Goal: When a player clears all items and completes every 2nd level, the jar should physically "morph" into a new shape (e.g., from a wide jar to a narrow neck flask or a rounded lab beaker).
+    Kot to emotka, która sama generuje siłę.
 
-Visual Style: This transition should be liquid-smooth and magical, not a sudden cut. The glass should feel like it's being reshaped by heat or magic while the screen is clear of clutter.
+    Mechanika: Co kilka sekund kot "skacze" w losowym kierunku wewnątrz słoika.
+
+    Efekt: Może nagle uderzyć w Twoją starannie ułożoną piramidę diamentów albo – co gorsza – wpaść prosto na bombę.
+
+    Wyzwanie: Musisz reagować na jego ruchy, kontrując je przechyłem telefonu, żeby nie narobił bałaganu.
 
 
-2. Premium Aesthetics (Apple Glass Style):
 
-The Look: All these effects must follow the modern "Glassmorphism" aesthetic—think high-end, semi-transparent materials that catch the light on the edges.
+New Bottle types (desktop image)
 
-Integration: Ensure that the crystals inside still "pop" and glitter, even when the glass surface has smudges on it.
 
-Deliverables:
-
-A system that handles the smooth transition between shapes when the level is cleared.
-
-An updated physics system that automatically matches the new glass shapes so items don't fall through walls.
+Magnet (🧲) ? Opada na dno jak ma 4 przyciągnięte elementy ?
