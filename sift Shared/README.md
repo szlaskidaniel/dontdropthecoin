@@ -10,11 +10,8 @@ Next items to implement / Fix:
 // Special items: poop spawns from stage 4+, bomb from stage 6+
 
 
-When return to main screen, after GAMEOVER , clear GaMEonver text
 
-
-
-replace few emoji add rock/stone,  rmeove books, add paperclip, śruba ?
+remove emoji books, puzzle, duck, banana. Add new emojis: rock/stone, paperclip, bolt.
 
 
 

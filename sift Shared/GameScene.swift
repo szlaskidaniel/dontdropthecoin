@@ -36,7 +36,7 @@ private struct PhysicsCategory {
 // MARK: - Emoji Type
 
 enum EmojiType: CaseIterable {
-    case crystal, apple, teddy, shoe, banana, book, gift, duck, donut, puzzle, balloon, poop, bomb
+    case crystal, apple, teddy, shoe, rock, gift, paperclip, donut, bolt, balloon, poop, bomb
 
     var character: String {
         switch self {
@@ -44,12 +44,11 @@ enum EmojiType: CaseIterable {
         case .apple:          return "🍎"
         case .teddy:          return "🧸"
         case .shoe:           return "👟"
-        case .banana:         return "🍌"
-        case .book:           return "📘"
+        case .rock:           return "🪨"
         case .gift:           return "🎁"
-        case .duck:           return "🦆"
+        case .paperclip:      return "📎"
         case .donut:          return "🍩"
-        case .puzzle:         return "🧩"
+        case .bolt:           return "🔩"
         case .balloon:        return "🎈"
         case .poop:           return "💩"
         case .bomb:           return "💣"
@@ -85,12 +84,11 @@ enum EmojiType: CaseIterable {
         case .apple:          return 0.6
         case .teddy:          return 0.5
         case .shoe:           return 0.7
-        case .banana:         return 0.5
-        case .book:           return 0.9
+        case .rock:           return 1.0
         case .gift:           return 0.6
-        case .duck:           return 0.5
+        case .paperclip:      return 0.3
         case .donut:          return 0.6
-        case .puzzle:         return 0.8
+        case .bolt:           return 0.9
         case .balloon:        return 0.15
         case .poop:           return 0.7
         case .bomb:           return 1.2
@@ -104,12 +102,11 @@ enum EmojiType: CaseIterable {
         case .apple:                    return 0.15
         case .teddy:                    return 0.10
         case .shoe:                     return 0.20
-        case .banana:                   return 0.12
-        case .book:                     return 0.25
+        case .rock:                     return 0.30
         case .gift:                     return 0.18
-        case .duck:                     return 0.10
+        case .paperclip:                return 0.08
         case .donut:                    return 0.14
-        case .puzzle:                   return 0.22
+        case .bolt:                     return 0.20
         case .balloon:                  return 0.05
         case .poop:                     return 0.30
         case .bomb:                     return 0.20
@@ -123,12 +120,11 @@ enum EmojiType: CaseIterable {
         case .apple:          return 0.55
         case .teddy:          return 0.60
         case .shoe:           return 0.50
-        case .banana:         return 0.50
-        case .book:           return 0.35
+        case .rock:           return 0.40
         case .gift:           return 0.58
-        case .duck:           return 0.62
+        case .paperclip:      return 0.30
         case .donut:          return 0.45
-        case .puzzle:         return 0.52
+        case .bolt:           return 0.35
         case .balloon:        return 0.70
         case .poop:           return 0.35
         case .bomb:           return 0.30
@@ -142,12 +138,11 @@ enum EmojiType: CaseIterable {
         case .apple:          return 16
         case .teddy:          return 24
         case .shoe:           return 22
-        case .banana:         return 20
-        case .book:           return 22
+        case .rock:           return 20
         case .gift:           return 20
-        case .duck:           return 22
+        case .paperclip:      return 18
         case .donut:          return 20
-        case .puzzle:         return 22
+        case .bolt:           return 18
         case .balloon:        return 40
         case .poop:           return 20
         case .bomb:           return 20
@@ -157,8 +152,9 @@ enum EmojiType: CaseIterable {
     var fontSize: CGFloat {
         switch self {
         case .teddy, .shoe: return 42
-        case .gift, .duck:  return 40
-        case .puzzle:       return 38
+        case .gift, .rock:  return 40
+        case .paperclip:    return 36
+        case .bolt:         return 36
         case .balloon:      return 72
         case .poop:         return 40
         case .bomb:         return 40
@@ -169,7 +165,7 @@ enum EmojiType: CaseIterable {
     /// Random junk type; one additional type unlocks every third stage.
     static func randomJunk(forStage stage: Int) -> EmojiType {
         let basePool: [EmojiType] = [.apple, .teddy, .shoe]
-        let unlocksByStage: [EmojiType] = [.banana, .book, .gift, .duck, .donut, .puzzle]
+        let unlocksByStage: [EmojiType] = [.rock, .gift, .paperclip, .donut, .bolt]
         let unlockedCount = max(0, stage / 3)
         let unlocked = Array(unlocksByStage.prefix(unlockedCount))
         let pool = basePool + unlocked
