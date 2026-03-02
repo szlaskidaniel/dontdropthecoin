@@ -379,6 +379,8 @@ class GameScene: SKScene {
 
     /// Individual dirt stain and smudge nodes scattered on the jar glass.
     private var dirtNodes: [SKNode] = []
+    /// Crop node that clips all dirt cloud puffs to the jar silhouette.
+    private var dirtCropNode: SKCropNode?
 
     /// Precompiled glass shader — avoid recompilation per frame.
     private let glassShader = SKShader(source: glassShaderSource)
@@ -721,6 +723,8 @@ class GameScene: SKScene {
         // Dirt overlays
         for node in dirtNodes { node.removeFromParent() }
         dirtNodes.removeAll()
+        dirtCropNode?.removeFromParent()
+        dirtCropNode = nil
 
         // Clear geometry cache
         jarPath = nil
@@ -1002,17 +1006,35 @@ class GameScene: SKScene {
 
     /// Rebuild dirt overlays based on completed plays.
     /// The first play of the day shows a clean jar — stains only appear after finishing a game.
-    /// Each completed play adds a new cluster of stains that accumulate in isolated spots.
+    /// Each completed play adds a new cluster of cloud puffs that accumulate inside the vessel.
     func updateDirtOverlays() {
-        // Remove old dirt nodes
+        // Remove old dirt nodes and crop container
         for node in dirtNodes { node.removeFromParent() }
         dirtNodes.removeAll()
+        dirtCropNode?.removeFromParent()
+        dirtCropNode = nil
 
         // Stains represent *completed* plays, so subtract the in-progress one.
         // playsUsedToday is incremented at game start, so during the first play it's 1,
         // but we want 0 stains until that play finishes.
         let completedPlays = max(0, EnergyManager.shared.playsUsedToday - (viewModel?.gameState == .playing ? 1 : 0))
-        guard completedPlays > 0 else { return }
+        guard completedPlays > 0, let path = jarPath else { return }
+
+        // Create a crop node that clips all cloud puffs to the jar silhouette
+        let closedPath = CGMutablePath()
+        closedPath.addPath(path)
+        closedPath.closeSubpath()
+
+        let cropMask = SKShapeNode(path: closedPath)
+        cropMask.fillColor = .white
+        cropMask.strokeColor = .clear
+
+        let cropNode = SKCropNode()
+        cropNode.name = "dirtCloudCrop"
+        cropNode.zPosition = 7
+        cropNode.maskNode = cropMask
+        addChild(cropNode)
+        dirtCropNode = cropNode
 
         // Seeded RNG — deterministic positions for a given completed count.
         var rng = DirtRNG(seed: UInt64(completedPlays &* 7919 &+ 42))
@@ -1022,245 +1044,86 @@ class GameScene: SKScene {
         }
     }
 
-    /// Adds one batch of dirt marks for a single completed play.
-    /// Stains and smudges can appear anywhere inside the vessel.
-    /// Uses `randomPointInsideJar` to respect the vessel's curved silhouette.
+    /// Adds one batch of cloudy smoke puffs for a single completed play.
+    /// Each play adds more puffs that get progressively more opaque,
+    /// making it harder to see through the jar glass.
     private func addStainBatch(playIndex: Int, rng: inout DirtRNG) {
-        // --- Smudge blotches scattered anywhere (3-5 per play) ---
-        let smudgeCount = 3 + rng.nextInt(bound: 3)
-        for _ in 0..<smudgeCount {
-            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
-            let w = rng.nextCGFloat(in: 18...44)
-            let h = rng.nextCGFloat(in: 14...32)
-
-            let smudge = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
-            smudge.position = pos
-            smudge.zPosition = 7
-            smudge.zRotation = rng.nextCGFloat(in: -0.8...0.8)
-            smudge.alpha = min(0.22 + CGFloat(playIndex) * 0.08, 0.56)
-            smudge.name = "dirtStain"
-            addChild(smudge)
-            dirtNodes.append(smudge)
-        }
-
-        // --- Grime spots scattered anywhere (2-4 per play) ---
-        let spotCount = 2 + rng.nextInt(bound: 3)
-        for _ in 0..<spotCount {
-            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
-            let r = rng.nextCGFloat(in: 4...10)
-
-            let spot = makeGrimeSpot(radius: r, rng: &rng)
-            spot.position = pos
-            spot.zPosition = 7
-            spot.alpha = min(0.24 + CGFloat(playIndex) * 0.07, 0.55)
-            spot.name = "dirtStain"
-            addChild(spot)
-            dirtNodes.append(spot)
-        }
-
-        // --- Occasional larger smear anywhere (40% chance) ---
-        if rng.nextInt(bound: 10) < 4 {
-            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.15)
-            let w = rng.nextCGFloat(in: 28...52)
-            let h = rng.nextCGFloat(in: 10...22)
-
-            let smear = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
-            smear.position = pos
-            smear.zPosition = 7
-            smear.zRotation = rng.nextCGFloat(in: -1.0...1.0)
-            smear.alpha = min(0.18 + CGFloat(playIndex) * 0.06, 0.45)
-            smear.name = "dirtStain"
-            addChild(smear)
-            dirtNodes.append(smear)
-        }
+        addDirtCloudPuffs(playIndex: playIndex, rng: &rng)
     }
 
-    // MARK: Dirt Sprite Factories
+    // MARK: Dirt Cloud Puffs
 
-    /// Flat opaque smudge blotch — like a thumbprint on glass. No arcs, no glow.
-    /// Uses an irregular filled shape with slight transparency variation.
-    private func makeSmudgeBlotch(size: CGSize, rng: inout DirtRNG) -> SKSpriteNode {
-        let pw = max(Int(size.width * 2), 8)
-        let ph = max(Int(size.height * 2), 8)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+    /// Generates a soft, white/gray cloud puff texture for persistent dirt haze.
+    /// Lighter and more opaque than bomb fog — designed to look like dusty residue on glass.
+    private func generateDirtCloudTexture(radius: CGFloat) -> SKTexture {
+        let size = CGSize(width: radius * 2, height: radius * 2)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            let cg = ctx.cgContext
+            let center = CGPoint(x: radius, y: radius)
 
-        guard let ctx = CGContext(
-            data: nil, width: pw, height: ph,
-            bitsPerComponent: 8, bytesPerRow: pw * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return SKSpriteNode() }
+            // White/gray cloud gradient — more opaque center, soft feathered edge
+            let colors = [
+                UIColor(white: 0.82, alpha: 0.70).cgColor,
+                UIColor(white: 0.78, alpha: 0.55).cgColor,
+                UIColor(white: 0.72, alpha: 0.35).cgColor,
+                UIColor(white: 0.65, alpha: 0.15).cgColor,
+                UIColor(white: 0.60, alpha: 0.0).cgColor,
+            ] as CFArray
+            let locations: [CGFloat] = [0.0, 0.2, 0.45, 0.75, 1.0]
 
-        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pw, height: ph)))
-
-        let cx = CGFloat(pw) / 2
-        let cy = CGFloat(ph) / 2
-        let rx = CGFloat(pw) * 0.42
-        let ry = CGFloat(ph) * 0.42
-
-        // Build an irregular blob path using perturbed ellipse points
-        let pointCount = 10
-        let blobPath = CGMutablePath()
-        var points: [CGPoint] = []
-        for i in 0..<pointCount {
-            let angle = (CGFloat(i) / CGFloat(pointCount)) * .pi * 2
-            let wobble = rng.nextCGFloat(in: 0.70...1.0)
-            let px = cx + cos(angle) * rx * wobble
-            let py = cy + sin(angle) * ry * wobble
-            points.append(CGPoint(x: px, y: py))
-        }
-        blobPath.move(to: points[0])
-        for i in 1..<points.count {
-            let prev = points[i - 1]
-            let curr = points[i]
-            let mpx = (prev.x + curr.x) / 2
-            let mpy = (prev.y + curr.y) / 2
-            blobPath.addQuadCurve(to: CGPoint(x: mpx, y: mpy), control: prev)
-        }
-        let last = points.last!
-        let first = points[0]
-        blobPath.addQuadCurve(to: first, control: last)
-        blobPath.closeSubpath()
-
-        // Fill with a dirty brownish color
-        let r = rng.nextCGFloat(in: 0.38...0.50)
-        let g = rng.nextCGFloat(in: 0.32...0.42)
-        let b = rng.nextCGFloat(in: 0.22...0.30)
-        ctx.setFillColor(CGColor(red: r, green: g, blue: b, alpha: 0.60))
-        ctx.addPath(blobPath)
-        ctx.fillPath()
-
-        // Add a slightly different inner blob for texture variation
-        let innerPath = CGMutablePath()
-        var innerPts: [CGPoint] = []
-        for i in 0..<8 {
-            let angle = (CGFloat(i) / 8.0) * .pi * 2 + rng.nextCGFloat(in: -0.3...0.3)
-            let wobble = rng.nextCGFloat(in: 0.30...0.55)
-            let px = cx + cos(angle) * rx * wobble
-            let py = cy + sin(angle) * ry * wobble
-            innerPts.append(CGPoint(x: px, y: py))
-        }
-        innerPath.move(to: innerPts[0])
-        for i in 1..<innerPts.count {
-            innerPath.addLine(to: innerPts[i])
-        }
-        innerPath.closeSubpath()
-        ctx.setFillColor(CGColor(red: r * 0.85, green: g * 0.85, blue: b * 0.85, alpha: 0.35))
-        ctx.addPath(innerPath)
-        ctx.fillPath()
-
-        guard let image = ctx.makeImage() else { return SKSpriteNode() }
-        let tex = SKTexture(cgImage: image)
-        let sprite = SKSpriteNode(texture: tex, size: size)
-        sprite.blendMode = .alpha
-        return sprite
-    }
-
-    /// A short smear mark — like a finger dragged across dirty glass.
-    private func makeSmearMark(rng: inout DirtRNG) -> SKSpriteNode {
-        let length = rng.nextCGFloat(in: 35...70)
-        let thickness = rng.nextCGFloat(in: 8...18)
-        let pw = max(Int(length * 2), 8)
-        let ph = max(Int(thickness * 4), 8)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-
-        guard let ctx = CGContext(
-            data: nil, width: pw, height: ph,
-            bitsPerComponent: 8, bytesPerRow: pw * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return SKSpriteNode() }
-
-        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pw, height: ph)))
-
-        let midY = CGFloat(ph) / 2
-        let startX = CGFloat(pw) * 0.08
-        let endX = CGFloat(pw) * 0.92
-
-        // Dirty brownish color
-        let r = rng.nextCGFloat(in: 0.40...0.52)
-        let g = rng.nextCGFloat(in: 0.34...0.44)
-        let b = rng.nextCGFloat(in: 0.24...0.32)
-
-        // Draw 2-3 overlapping thick strokes for a smeared look
-        let strokeCount = 2 + rng.nextInt(bound: 2)
-        for s in 0..<strokeCount {
-            let yOff = rng.nextCGFloat(in: -thickness * 0.4 ... thickness * 0.4)
-            let lw = thickness * rng.nextCGFloat(in: 0.6...1.0)
-            let alpha = rng.nextCGFloat(in: 0.30...0.55)
-
-            ctx.setStrokeColor(CGColor(red: r, green: g, blue: b, alpha: alpha))
-            ctx.setLineWidth(lw)
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
-
-            let path = CGMutablePath()
-            path.move(to: CGPoint(x: startX, y: midY + yOff))
-
-            let segs = 3 + rng.nextInt(bound: 3)
-            let segW = (endX - startX) / CGFloat(segs)
-            for i in 1...segs {
-                let px = startX + segW * CGFloat(i)
-                let py = midY + yOff + rng.nextCGFloat(in: -lw * 0.5 ... lw * 0.5)
-                path.addLine(to: CGPoint(x: px, y: py))
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                          colors: colors, locations: locations) {
+                cg.drawRadialGradient(gradient,
+                                      startCenter: center, startRadius: 0,
+                                      endCenter: center, endRadius: radius,
+                                      options: [])
             }
-            ctx.addPath(path)
-            ctx.strokePath()
-
-            _ = s  // silence unused warning
         }
-
-        guard let image = ctx.makeImage() else { return SKSpriteNode() }
-        let tex = SKTexture(cgImage: image)
-        let displaySize = CGSize(width: length, height: thickness * 2)
-        let sprite = SKSpriteNode(texture: tex, size: displaySize)
-        sprite.blendMode = .alpha
-        return sprite
+        return SKTexture(image: image)
     }
 
-    /// Small grime spot — an opaque irregular dot like dried residue on glass.
-    private func makeGrimeSpot(radius: CGFloat, rng: inout DirtRNG) -> SKSpriteNode {
-        let pixSize = max(Int(radius * 4), 6)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
+    /// Adds persistent cloudy smoke puffs for a completed play — reuses the bomb fog concept
+    /// but with whiter, more opaque tones. These stay on the jar between stages and accumulate.
+    /// Puffs are added to `dirtCropNode` so they are clipped to the vessel silhouette.
+    private func addDirtCloudPuffs(playIndex: Int, rng: inout DirtRNG) {
+        guard let cropNode = dirtCropNode else { return }
 
-        guard let ctx = CGContext(
-            data: nil, width: pixSize, height: pixSize,
-            bitsPerComponent: 8, bytesPerRow: pixSize * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return SKSpriteNode() }
+        // 2-4 cloud puffs per play — gradual build-up across 5 plays
+        let puffCount = 2 + rng.nextInt(bound: 3)
 
-        ctx.clear(CGRect(origin: .zero, size: CGSize(width: pixSize, height: pixSize)))
+        // Pre-generate textures at different sizes for variety
+        let smallTex  = generateDirtCloudTexture(radius: 60)
+        let mediumTex = generateDirtCloudTexture(radius: 100)
+        let largeTex  = generateDirtCloudTexture(radius: 140)
+        let textures  = [smallTex, mediumTex, mediumTex, largeTex, largeTex]
 
-        let center = CGPoint(x: CGFloat(pixSize) / 2, y: CGFloat(pixSize) / 2)
-        let r = CGFloat(pixSize) * 0.44
+        for i in 0..<puffCount {
+            let tex = textures[i % textures.count]
+            let puffRadius = rng.nextCGFloat(in: 55...120)
+            let puffSize = CGSize(width: puffRadius * 2, height: puffRadius * 2)
 
-        // Irregular polygon shape
-        let sides = 5 + rng.nextInt(bound: 4)
-        let path = CGMutablePath()
-        for i in 0..<sides {
-            let angle = (CGFloat(i) / CGFloat(sides)) * .pi * 2
-            let wobble = rng.nextCGFloat(in: 0.65...1.0)
-            let px = center.x + cos(angle) * r * wobble
-            let py = center.y + sin(angle) * r * wobble
-            if i == 0 { path.move(to: CGPoint(x: px, y: py)) }
-            else { path.addLine(to: CGPoint(x: px, y: py)) }
+            let puff = SKSpriteNode(texture: tex, size: puffSize)
+            puff.name = "dirtStain"
+            puff.blendMode = .alpha
+
+            // Place inside the jar
+            let pos = randomPointInsideJar(rng: &rng, insetFraction: 0.06)
+            puff.position = pos
+            puff.zRotation = rng.nextCGFloat(in: 0 ... .pi * 2)
+
+            // Scale varies per puff
+            let scale = rng.nextCGFloat(in: 0.7...1.3)
+            puff.setScale(scale)
+
+            // Gradual opacity ramp: barely visible at play 1, moderate haze by play 5
+            // Play 1: ~0.10,  Play 2: ~0.17,  Play 3: ~0.24,  Play 4: ~0.31,  Play 5: ~0.38
+            let baseAlpha: CGFloat = 0.03 + CGFloat(playIndex) * 0.07
+            puff.alpha = min(baseAlpha, 0.40)
+
+            cropNode.addChild(puff)
+            dirtNodes.append(puff)
         }
-        path.closeSubpath()
-
-        let red = rng.nextCGFloat(in: 0.36...0.48)
-        let green = rng.nextCGFloat(in: 0.30...0.40)
-        let blue = rng.nextCGFloat(in: 0.20...0.28)
-        ctx.setFillColor(CGColor(red: red, green: green, blue: blue, alpha: 0.70))
-        ctx.addPath(path)
-        ctx.fillPath()
-
-        guard let image = ctx.makeImage() else { return SKSpriteNode() }
-        let tex = SKTexture(cgImage: image)
-        let displaySize = CGSize(width: radius * 2, height: radius * 2)
-        let sprite = SKSpriteNode(texture: tex, size: displaySize)
-        sprite.blendMode = .alpha
-        return sprite
     }
 
     /// Simple seeded RNG for deterministic dirt placement per play count.
@@ -2703,117 +2566,78 @@ class GameScene: SKScene {
     func playDirtyJarAnimation(completion: @escaping () -> Void) {
         let jarH = jarTopY - jarBottomY
         let cx = (jarMinX + jarMaxX) / 2
+        guard let path = jarPath else { completion(); return }
 
         // Remove existing banners so the dirt animation is the focus
         children.filter { $0.name == "banner" }.forEach { $0.removeFromParent() }
 
-        // Container for all dirt explosion nodes so we can manage them easily
-        let dirtContainer = SKNode()
+        // Crop node clips all animated smoke to the jar silhouette
+        let closedPath = CGMutablePath()
+        closedPath.addPath(path)
+        closedPath.closeSubpath()
+
+        let cropMask = SKShapeNode(path: closedPath)
+        cropMask.fillColor = .white
+        cropMask.strokeColor = .clear
+
+        let dirtContainer = SKCropNode()
         dirtContainer.name = "dirtExplosion"
         dirtContainer.zPosition = 15
+        dirtContainer.maskNode = cropMask
         addChild(dirtContainer)
 
         var rng = DirtRNG(seed: 31415)
 
-        // --- Phase 1: Large dirt splatters burst outward from center ---
+        // Pre-generate cloud textures
+        let smallTex  = generateDirtCloudTexture(radius: 80)
+        let mediumTex = generateDirtCloudTexture(radius: 130)
+        let largeTex  = generateDirtCloudTexture(radius: 180)
+        let textures  = [smallTex, mediumTex, mediumTex, largeTex, largeTex]
+
+        // --- Scattered smoke puffs bursting from center (~40% coverage) ---
         let burstCenter = CGPoint(x: cx, y: jarBottomY + jarH * 0.4)
-        let splatterCount = 18
-        for i in 0..<splatterCount {
-            let w = rng.nextCGFloat(in: 40...100)
-            let h = rng.nextCGFloat(in: 30...80)
-            let blotch = makeSmudgeBlotch(size: CGSize(width: w, height: h), rng: &rng)
-            blotch.position = burstCenter
-            blotch.zPosition = 15
-            blotch.alpha = 0
-            blotch.setScale(0.2)
-            blotch.zRotation = rng.nextCGFloat(in: -.pi ... .pi)
-            dirtContainer.addChild(blotch)
+        let puffCount = 7
+        for i in 0..<puffCount {
+            let tex = textures[i % textures.count]
+            let puffRadius = rng.nextCGFloat(in: 60...120)
+            let puffSize = CGSize(width: puffRadius * 2, height: puffRadius * 2)
 
-            // Generate a random target inside the jar
-            let target = randomPointInsideJar(rng: &rng, insetFraction: 0.12)
+            let puff = SKSpriteNode(texture: tex, size: puffSize)
+            puff.blendMode = .alpha
+            puff.position = burstCenter
+            puff.alpha = 0
+            puff.setScale(0.15)
+            puff.zRotation = rng.nextCGFloat(in: -.pi ... .pi)
+            dirtContainer.addChild(puff)
 
-            let delay = Double(i) * 0.04
-            let targetAlpha = rng.nextCGFloat(in: 0.45...0.85)
+            let target = randomPointInsideJar(rng: &rng, insetFraction: 0.10)
+            let delay = Double(i) * 0.07
+            let targetAlpha = rng.nextCGFloat(in: 0.22...0.40)
+            let targetScale = rng.nextCGFloat(in: 0.7...1.2)
 
-            blotch.run(.sequence([
+            puff.run(.sequence([
                 .wait(forDuration: delay),
                 .group([
-                    .move(to: target, duration: 0.35),
-                    .scale(to: rng.nextCGFloat(in: 0.8...1.4), duration: 0.35),
-                    .fadeAlpha(to: targetAlpha, duration: 0.25)
+                    .move(to: target, duration: 0.45),
+                    .scale(to: targetScale, duration: 0.45),
+                    .fadeAlpha(to: targetAlpha, duration: 0.35)
                 ])
             ]))
         }
 
-        // --- Phase 2: Smear streaks dripping down (stay inside jar) ---
-        let streakCount = 10
-        for i in 0..<streakCount {
-            let length = rng.nextCGFloat(in: 50...120)
-            let thickness = rng.nextCGFloat(in: 12...28)
-            let smear = makeSmudgeBlotch(
-                size: CGSize(width: thickness, height: length),
-                rng: &rng
-            )
-            let startPt = randomPointInsideJar(rng: &rng, insetFraction: 0.15)
-            smear.position = startPt
-            smear.zPosition = 15
-            smear.alpha = 0
-            dirtContainer.addChild(smear)
+        // --- Subtle fog underlay (~40% opacity) ---
+        let fogNode = SKShapeNode(path: path)
+        fogNode.fillColor = SKColor(white: 0.72, alpha: 1.0)
+        fogNode.strokeColor = .clear
+        fogNode.alpha = 0
+        dirtContainer.addChild(fogNode)
 
-            let delay = 0.5 + Double(i) * 0.06
-            // Drip downward, but clamp so it doesn't exit the jar
-            let dripDist = rng.nextCGFloat(in: 30...80)
-            let dripTarget = clampInsideJar(
-                CGPoint(x: startPt.x, y: startPt.y - dripDist),
-                insetFraction: 0.10
-            )
+        fogNode.run(.sequence([
+            .wait(forDuration: 0.4),
+            .fadeAlpha(to: 0.30, duration: 1.0)
+        ]))
 
-            smear.run(.sequence([
-                .wait(forDuration: delay),
-                .group([
-                    .fadeAlpha(to: rng.nextCGFloat(in: 0.4...0.7), duration: 0.3),
-                    .move(to: dripTarget, duration: 0.8)
-                ])
-            ]))
-        }
-
-        // --- Phase 3: Fine grime spots inside jar ---
-        let spotCount = 25
-        for i in 0..<spotCount {
-            let r = rng.nextCGFloat(in: 4...14)
-            let spot = makeGrimeSpot(radius: r, rng: &rng)
-            let pt = randomPointInsideJar(rng: &rng, insetFraction: 0.06)
-            spot.position = pt
-            spot.zPosition = 15
-            spot.alpha = 0
-            dirtContainer.addChild(spot)
-
-            let delay = 0.3 + Double(i) * 0.03
-            spot.run(.sequence([
-                .wait(forDuration: delay),
-                .group([
-                    .fadeAlpha(to: rng.nextCGFloat(in: 0.5...0.9), duration: 0.2),
-                    .scale(to: rng.nextCGFloat(in: 1.0...1.6), duration: 0.25)
-                ])
-            ]))
-        }
-
-        // --- Phase 4: Foggy overlay clipped to jar shape ---
-        if let path = jarPath {
-            let fogNode = SKShapeNode(path: path)
-            fogNode.fillColor = SKColor(red: 0.28, green: 0.22, blue: 0.15, alpha: 1.0)
-            fogNode.strokeColor = .clear
-            fogNode.zPosition = 14
-            fogNode.alpha = 0
-            dirtContainer.addChild(fogNode)
-
-            fogNode.run(.sequence([
-                .wait(forDuration: 0.6),
-                .fadeAlpha(to: 0.55, duration: 1.0)
-            ]))
-        }
-
-        // --- Haptic feedback for the splatter ---
+        // --- Haptic feedback ---
         #if os(iOS)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
@@ -2906,6 +2730,8 @@ class GameScene: SKScene {
         // Remove dirt overlays and reflection emitter — rebuilt after morph.
         for node in dirtNodes { node.removeFromParent() }
         dirtNodes.removeAll()
+        dirtCropNode?.removeFromParent()
+        dirtCropNode = nil
         childNode(withName: "jarReflectionEmitter")?.removeFromParent()
 
         isMorphing = true
