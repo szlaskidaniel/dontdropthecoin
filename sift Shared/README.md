@@ -9,11 +9,12 @@ Next items to implement / Fix:
 
 // Special items: poop spawns from stage 4+, bomb from stage 6+
 
-Why when it's detonates - I see like a game freeze ?
-Ignited bomb should have a trail of smoke behind
 After explosion - dust / cover inside jar area for 3 seconds
 
 replace few emoji add rock/stone,  rmeove books, add paperclip, śruba ?
+
+
+When return to main screen, after GAMEOVER , clear GaMEonver text
 
 
 New emoji:
@@ -30,7 +31,8 @@ New emoji:
 
 
 
+
+
+LATER:
 New Bottle types (desktop image)
-
-
 Magnet (🧲) ? Opada na dno jak ma 4 przyciągnięte elementy ?

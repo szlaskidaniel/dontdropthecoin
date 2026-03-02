@@ -3310,7 +3310,7 @@ class GameScene: SKScene {
         fuseEmitter.zPosition = 2
         sprite.addChild(fuseEmitter)
 
-        // Smoke trail emitter — dormant, thickens with each strike
+        // Smoke puff emitter — dormant, thickens with each strike (stays local to bomb)
         let smokeEmitter = SKEmitterNode()
         smokeEmitter.name = "bombSmoke"
         smokeEmitter.particleTexture = makeCircleTexture(radius: 4)
@@ -3332,6 +3332,41 @@ class GameScene: SKScene {
         smokeEmitter.position = CGPoint(x: 0, y: sprite.size.height * 0.36)
         smokeEmitter.zPosition = 1
         sprite.addChild(smokeEmitter)
+
+        // Smoke TRAIL emitter — particles stay in scene space so they trail behind the bomb
+        let trailEmitter = SKEmitterNode()
+        trailEmitter.name = "bombTrail"
+        trailEmitter.particleTexture = makeCircleTexture(radius: 6)
+        trailEmitter.particleBirthRate = 0   // dormant until first strike
+        trailEmitter.numParticlesToEmit = 0
+        trailEmitter.particleLifetime = 1.2
+        trailEmitter.particleLifetimeRange = 0.4
+        trailEmitter.particleSpeed = 5
+        trailEmitter.particleSpeedRange = 3
+        trailEmitter.emissionAngle = .pi / 2        // upward drift
+        trailEmitter.emissionAngleRange = .pi / 2   // wide spread for natural look
+        trailEmitter.particleScale = 0.2
+        trailEmitter.particleScaleRange = 0.15
+        trailEmitter.particleScaleSpeed = 0.8        // particles grow as they age (expanding smoke)
+        trailEmitter.particleAlpha = 0.25
+        trailEmitter.particleAlphaRange = 0.1
+        trailEmitter.particleAlphaSpeed = -0.22       // slow fade for lingering trail
+        trailEmitter.particleColor = SKColor(red: 0.35, green: 0.33, blue: 0.30, alpha: 1.0)
+        trailEmitter.particleColorBlendFactor = 1.0
+        trailEmitter.particleColorSequence = SKKeyframeSequence(
+            keyframeValues: [
+                SKColor(red: 0.45, green: 0.42, blue: 0.38, alpha: 1.0),  // warm grey at birth
+                SKColor(red: 0.30, green: 0.30, blue: 0.30, alpha: 1.0),  // neutral grey mid-life
+                SKColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 0.0)   // dark, faded out
+            ],
+            times: [0.0, 0.5, 1.0]
+        )
+        trailEmitter.particleBlendMode = .alpha
+        trailEmitter.position = CGPoint(x: 0, y: sprite.size.height * 0.36)
+        trailEmitter.zPosition = -1
+        // KEY: targetNode = scene makes particles stay in world space, creating trailing effect
+        trailEmitter.targetNode = self
+        sprite.addChild(trailEmitter)
     }
 
     /// Register a hard wall strike on a bomb. Returns true if the bomb should detonate.
@@ -3377,6 +3412,7 @@ class GameScene: SKScene {
         let glow = sprite.childNode(withName: "bombGlow") as? SKShapeNode
         let fuse = sprite.childNode(withName: "bombFuse") as? SKEmitterNode
         let smoke = sprite.childNode(withName: "bombSmoke") as? SKEmitterNode
+        let trail = sprite.childNode(withName: "bombTrail") as? SKEmitterNode
 
         // Clean previous actions
         sprite.removeAction(forKey: "bombFlash")
@@ -3403,6 +3439,12 @@ class GameScene: SKScene {
             // Thin smoke starts
             smoke?.particleBirthRate = 2
             smoke?.particleScale = 0.3
+
+            // Smoke trail begins — light wisps trailing behind the bomb
+            trail?.particleBirthRate = 6
+            trail?.particleScale = 0.2
+            trail?.particleLifetime = 1.0
+            trail?.particleAlpha = 0.18
 
         case 2:
             // --- STRIKE 2: DANGER ---
@@ -3443,6 +3485,13 @@ class GameScene: SKScene {
             // Smoke thickens substantially
             smoke?.particleBirthRate = 8
             smoke?.particleScale = 0.5
+
+            // Smoke trail thickens — denser, larger puffs, linger longer
+            trail?.particleBirthRate = 14
+            trail?.particleScale = 0.35
+            trail?.particleLifetime = 1.4
+            trail?.particleAlpha = 0.3
+            trail?.particleScaleSpeed = 1.0
             smoke?.particleLifetime = 1.0
             smoke?.particleAlpha = 0.5
 
@@ -3663,8 +3712,8 @@ class GameScene: SKScene {
                 self.showBombExplosionEffect(at: center)
 
                 // --- Force impulse — devastate everything in range ---
-                let blastRadius: CGFloat = 320
-                let maxForce: CGFloat = 420
+                let blastRadius: CGFloat = 280
+                let maxForce: CGFloat = 320
 
                 let allItems: [SKNode] = self.children.filter {
                     $0.name == "crystal" || $0.name == "junk" || $0.name == "balloon" ||
