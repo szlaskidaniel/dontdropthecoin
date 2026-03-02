@@ -10,9 +10,8 @@ Next items to implement / Fix:
 // Special items: poop spawns from stage 4+, bomb from stage 6+
 
 
-
-remove emoji books, puzzle, duck, banana. Add new emojis: rock/stone, paperclip, bolt.
-
+Add sounds in game , clikc menu buttons, diamonds "ching" between and on the bottle
+Use smoke (more white/gray) as a dirt ?
 
 
 New emoji:

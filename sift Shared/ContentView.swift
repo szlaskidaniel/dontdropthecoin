@@ -499,15 +499,26 @@ private final class DeviceTiltObserver: ObservableObject {
 
 struct EnergyIndicator: View {
     @ObservedObject private var energy = EnergyManager.shared
+    @State private var showInfo = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<EnergyManager.maxPlays, id: \.self) { index in
-                Circle()
-                    .fill(index < energy.playsRemaining
-                          ? Color(red: 0.30, green: 0.86, blue: 1.00)
-                          : Color.white.opacity(0.15))
-                    .frame(width: 10, height: 10)
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                ForEach(0..<EnergyManager.maxPlays, id: \.self) { index in
+                    Circle()
+                        .fill(index < energy.playsRemaining
+                              ? Color(red: 0.30, green: 0.86, blue: 1.00)
+                              : Color.white.opacity(0.15))
+                        .frame(width: 10, height: 10)
+                }
+            }
+
+            Button {
+                showInfo = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
             }
         }
         .padding(.horizontal, 20)
@@ -516,6 +527,83 @@ struct EnergyIndicator: View {
             Capsule(style: .continuous)
                 .fill(.ultraThinMaterial.opacity(0.3))
         )
+        .sheet(isPresented: $showInfo) {
+            EnergyInfoSheet()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+// MARK: - Energy Info Sheet
+
+private struct EnergyInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.10, green: 0.03, blue: 0.14)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Text("🫙")
+                    .font(.system(size: 56))
+                    .padding(.top, 24)
+
+                Text("Daily Plays")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    InfoRow(icon: "sparkles", text: "You get 5 free plays each day.")
+                    InfoRow(icon: "aqi.medium", text: "The jar gets dusty with each game. After 5 plays, it's too dirty to sift.")
+                    InfoRow(icon: "play.rectangle.fill", text: "Watch an ad to clean the jar and keep playing for free.")
+                    InfoRow(icon: "crown.fill", text: "Or unlock permanently — one purchase removes dust forever!")
+                }
+                .padding(.horizontal, 24)
+
+                Spacer()
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Got it")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.4))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.8)
+                                )
+                        )
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+}
+
+private struct InfoRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(red: 0.30, green: 0.86, blue: 1.00))
+                .frame(width: 24)
+
+            Text(text)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
