@@ -3707,9 +3707,10 @@ class GameScene: SKScene {
                 slowMoGlow.removeFromParent()
                 self.physicsWorld.speed = savedSpeed
 
-                // BOOM sound + visual explosion
+                // BOOM sound + visual explosion + glass fog
                 self.playBombBoomSound()
                 self.showBombExplosionEffect(at: center)
+                self.showBombFogEffect(at: center)
 
                 // --- Force impulse — devastate everything in range ---
                 let blastRadius: CGFloat = 280
@@ -3914,6 +3915,141 @@ class GameScene: SKScene {
                     .fadeOut(withDuration: 0.8)
                 ]),
                 .removeFromParent()
+            ]))
+        }
+    }
+
+    // MARK: - Bomb Fog / Glass Smudge Effect
+
+    /// Generates a single soft cloud puff texture — a radial gradient circle with feathered edges.
+    private func generateCloudPuffTexture(radius: CGFloat) -> SKTexture {
+        let size = CGSize(width: radius * 2, height: radius * 2)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            let cg = ctx.cgContext
+            let center = CGPoint(x: radius, y: radius)
+
+            // Multi-stop radial gradient: dark sooty center, soft feathered edge
+            let colors = [
+                UIColor(white: 0.38, alpha: 0.75).cgColor,
+                UIColor(white: 0.34, alpha: 0.55).cgColor,
+                UIColor(white: 0.30, alpha: 0.30).cgColor,
+                UIColor(white: 0.26, alpha: 0.10).cgColor,
+                UIColor(white: 0.22, alpha: 0.0).cgColor,
+            ] as CFArray
+            let locations: [CGFloat] = [0.0, 0.2, 0.45, 0.75, 1.0]
+
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                          colors: colors, locations: locations) {
+                cg.drawRadialGradient(gradient,
+                                      startCenter: center, startRadius: 0,
+                                      endCenter: center, endRadius: radius,
+                                      options: [])
+            }
+        }
+        return SKTexture(image: image)
+    }
+
+    /// Shows a cloudy fog effect clipped to the jar after a bomb explosion.
+    /// Spawns multiple individual cloud puffs that drift independently for a natural smoke look.
+    private func showBombFogEffect(at explosionPoint: CGPoint) {
+        guard let path = jarPath else { return }
+
+        // Create a closed jar path for masking
+        let closedPath = CGMutablePath()
+        closedPath.addPath(path)
+        closedPath.closeSubpath()
+
+        // Crop node keeps all fog inside the jar
+        let cropMask = SKShapeNode(path: closedPath)
+        cropMask.fillColor = .white
+        cropMask.strokeColor = .clear
+
+        let fogCrop = SKCropNode()
+        fogCrop.name = "bombFogCrop"
+        fogCrop.zPosition = 12
+        fogCrop.maskNode = cropMask
+        addChild(fogCrop)
+
+        // Pre-generate a few puff textures at different sizes for variety
+        let smallPuff  = generateCloudPuffTexture(radius: 120)
+        let mediumPuff = generateCloudPuffTexture(radius: 200)
+        let largePuff  = generateCloudPuffTexture(radius: 280)
+        let puffTextures = [smallPuff, smallPuff, mediumPuff, mediumPuff, mediumPuff, largePuff]
+
+        // Track puff count so the last one to finish removes the crop node
+        let puffCount = Int.random(in: 28...40)
+        var removedCount = 0
+
+        for i in 0..<puffCount {
+            let tex = puffTextures[i % puffTextures.count]
+            let puffRadius = CGFloat.random(in: 140...320)
+            let puffSize = CGSize(width: puffRadius * 2, height: puffRadius * 2)
+
+            let puff = SKSpriteNode(texture: tex, size: puffSize)
+            puff.name = "fogPuff"
+            puff.blendMode = .alpha
+            puff.zPosition = CGFloat.random(in: 11...13)
+
+            // Scatter puffs around the explosion — tighter cluster near center, some further out
+            let spawnAngle = CGFloat.random(in: 0...CGFloat.pi * 2)
+            let spawnDist = CGFloat.random(in: 0...200) * CGFloat.random(in: 0.3...1.0) // bias toward center
+            let startX = explosionPoint.x + cos(spawnAngle) * spawnDist
+            let startY = explosionPoint.y + sin(spawnAngle) * spawnDist
+            puff.position = CGPoint(x: startX, y: startY)
+
+            // Randomize initial scale and rotation for variety
+            let initScale = CGFloat.random(in: 0.3...0.7)
+            puff.setScale(initScale)
+            puff.zRotation = CGFloat.random(in: 0...CGFloat.pi * 2)
+            puff.alpha = 0.0
+
+            fogCrop.addChild(puff)
+
+            // Each puff has its own drift direction, speed, and timing
+            let driftAngle = CGFloat.random(in: 0...CGFloat.pi * 2)
+            let driftSpeed = CGFloat.random(in: 15...50)
+            let driftX = cos(driftAngle) * driftSpeed
+            let driftY = sin(driftAngle) * driftSpeed + CGFloat.random(in: 8...25) // upward bias
+            let growTo = initScale * CGFloat.random(in: 1.8...3.0)
+            let spinAmount = CGFloat.random(in: -0.4...0.4)
+
+            // Stagger appearance: inner puffs appear first, outer ones slightly later
+            let appearDelay = Double(spawnDist / 200.0) * 0.15 + Double.random(in: 0...0.1)
+            let fadeInDuration = Double.random(in: 0.1...0.25)
+            let peakAlpha = CGFloat.random(in: 0.45...0.75)
+            let holdDuration = Double.random(in: 0.6...1.2)
+            let fadeOutDuration = Double.random(in: 2.5...4.0)
+
+            let totalPuffCount = puffCount  // capture for closure
+            puff.run(.sequence([
+                .wait(forDuration: appearDelay),
+                // Fade in while starting to grow
+                .group([
+                    .fadeAlpha(to: peakAlpha, duration: fadeInDuration),
+                    .scale(to: initScale * 1.2, duration: fadeInDuration),
+                ]),
+                // Hold — subtle drift and slow rotation
+                .group([
+                    .wait(forDuration: holdDuration),
+                    .moveBy(x: driftX * 0.2, y: driftY * 0.2, duration: holdDuration),
+                    .rotate(byAngle: spinAmount * 0.3, duration: holdDuration),
+                ]),
+                // Dissipate — drift outward, expand, fade, rotate
+                .group([
+                    .fadeOut(withDuration: fadeOutDuration),
+                    .moveBy(x: driftX, y: driftY, duration: fadeOutDuration),
+                    .scale(to: growTo, duration: fadeOutDuration),
+                    .rotate(byAngle: spinAmount, duration: fadeOutDuration),
+                ]),
+                // Cleanup
+                .run { [weak fogCrop] in
+                    puff.removeFromParent()
+                    removedCount += 1
+                    if removedCount >= totalPuffCount {
+                        fogCrop?.removeFromParent()
+                    }
+                }
             ]))
         }
     }
