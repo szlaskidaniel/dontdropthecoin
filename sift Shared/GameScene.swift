@@ -1900,8 +1900,11 @@ class GameScene: SKScene {
 
         // All emoji report contact with webs and walls.
         // Poop also reports contact with other emoji (for gluing).
+        // Bomb reports contact with everything except balloon (soft, doesn't count as a strike).
         if type.isPoop {
             body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web | PhysicsCategory.crystal | PhysicsCategory.junk | PhysicsCategory.balloon
+        } else if type.isBomb {
+            body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web | PhysicsCategory.crystal | PhysicsCategory.junk
         } else {
             body.contactTestBitMask = PhysicsCategory.wall | PhysicsCategory.web
         }
@@ -4132,14 +4135,33 @@ extension GameScene: SKPhysicsContactDelegate {
             }
         }
 
-        // --- Fragile Bomb: track wall impacts ---
-        let bombHitWall = (nodeA?.name == "bomb" && b == PhysicsCategory.wall) ||
-                          (nodeB?.name == "bomb" && a == PhysicsCategory.wall)
-        if bombHitWall {
+        // --- Fragile Bomb: track hard impacts (walls + items, NOT balloons) ---
+        let hardCategories: UInt32 = PhysicsCategory.wall | PhysicsCategory.crystal | PhysicsCategory.junk
+        let bombHitHard = (nodeA?.name == "bomb" && (b & hardCategories) != 0) ||
+                          (nodeB?.name == "bomb" && (a & hardCategories) != 0)
+        // Also count bomb-on-bomb and bomb-on-poop collisions
+        let bombHitItem: Bool = {
+            if nodeA?.name == "bomb", let other = nodeB?.name {
+                return other == "poop" || (other == "bomb" && nodeB !== nodeA)
+            }
+            if nodeB?.name == "bomb", let other = nodeA?.name {
+                return other == "poop" || (other == "bomb" && nodeA !== nodeB)
+            }
+            return false
+        }()
+        if bombHitHard || bombHitItem {
             let bombNode = (nodeA?.name == "bomb") ? nodeA! : nodeB!
             if registerBombWallHit(bombNode, impulse: impulse) {
                 explodeBomb(bombNode)
                 return
+            }
+            // If a second bomb was also involved, register the hit on it too
+            if bombHitItem, nodeA?.name == "bomb", nodeB?.name == "bomb",
+               let otherBomb = nodeB, otherBomb !== bombNode {
+                if registerBombWallHit(otherBomb, impulse: impulse) {
+                    explodeBomb(otherBomb)
+                    return
+                }
             }
         }
 

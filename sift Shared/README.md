@@ -9,12 +9,13 @@ Next items to implement / Fix:
 
 // Special items: poop spawns from stage 4+, bomb from stage 6+
 
-After explosion - dust / cover inside jar area for 3 seconds
+
+When return to main screen, after GAMEOVER , clear GaMEonver text
+
+
 
 replace few emoji add rock/stone,  rmeove books, add paperclip, śruba ?
 
-
-When return to main screen, after GAMEOVER , clear GaMEonver text
 
 
 New emoji:
