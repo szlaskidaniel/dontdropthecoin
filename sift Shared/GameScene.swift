@@ -392,6 +392,10 @@ class GameScene: SKScene {
 
     private var stageWon = false
     private var gameOver = false
+    /// Time when stage-clear conditions were first met; used to confirm win after a short delay.
+    private var pendingStageClearStartTime: TimeInterval?
+    /// Delay before confirming stage clear, so near-simultaneous crystal losses are accounted for.
+    private let stageClearConfirmationDelay: TimeInterval = 0.5
     private var isTransitioningShape = false
     /// True while items are popping in at the start of a stage. Locks tilt gravity and interaction.
     private var isSpawning = false
@@ -555,6 +559,7 @@ class GameScene: SKScene {
         crystalSpawnIndex = 0
         stageWon = false
         gameOver = false
+        pendingStageClearStartTime = nil
         isSpawning = false
         isTransitioningShape = false
 
@@ -2292,7 +2297,7 @@ class GameScene: SKScene {
         let inJarNow = crystalsInsideJar()
         viewModel?.crystalsInJar = inJarNow.count
 
-        checkWinCondition()
+        checkWinCondition(currentTime: currentTime)
     }
 
     // MARK: - Jar Containment
@@ -2315,18 +2320,29 @@ class GameScene: SKScene {
 
     // MARK: - Win / Game Over
 
-    private func checkWinCondition() {
+    private func checkWinCondition(currentTime: TimeInterval) {
         let junkNodes = children.filter { $0.name == "junk" || $0.name == "balloon" || $0.name == "poop" || $0.name == "bomb" }
 
         // Stage clear: all junk and balloons gone
         if junkNodes.isEmpty {
+            if pendingStageClearStartTime == nil {
+                pendingStageClearStartTime = currentTime
+                return
+            }
+
+            guard let pendingStart = pendingStageClearStartTime else { return }
+            guard currentTime - pendingStart >= stageClearConfirmationDelay else { return }
+
             // Count all surviving crystals — both inside the jar and still on screen.
             let allSurviving = children.filter { $0.name == "crystal" }
             viewModel?.crystalsInJar = allSurviving.count
 
+            pendingStageClearStartTime = nil
             stageWon = true
             viewModel?.stageCleared()
             showWinEffect()
+        } else {
+            pendingStageClearStartTime = nil
         }
     }
 

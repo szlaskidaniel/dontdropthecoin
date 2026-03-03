@@ -7,7 +7,7 @@
 
 Next items to implement / Fix as MVP:
 
-change to max 3 games / day
+
 Still find a better bg_music 
 
 
