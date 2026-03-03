@@ -369,7 +369,7 @@ struct MainMenuOverlay: View {
                 }
                 .padding(.horizontal, 50)
 
-                Text("Tilt to clear the clutter.\nKeep only 💎 crystals!")
+                Text("Tilt to clear the clutter.\nKeep only 💎 crystals. 3 plays daily.")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.4))
@@ -563,8 +563,8 @@ private struct EnergyInfoSheet: View {
                     .foregroundStyle(.white)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    InfoRow(icon: "sparkles", text: "You get 5 free plays each day.")
-                    InfoRow(icon: "aqi.medium", text: "The jar gets dusty with each game. After 5 plays, it's too dirty to sift.")
+                    InfoRow(icon: "sparkles", text: "You get 3 free plays each day.")
+                    InfoRow(icon: "aqi.medium", text: "The jar gets dusty with each game. After 3 plays, it's too dirty to sift.")
                     InfoRow(icon: "play.rectangle.fill", text: "Watch an ad to clean the jar and keep playing for free.")
                     InfoRow(icon: "crown.fill", text: "Or unlock permanently — one purchase removes dust forever!")
                 }

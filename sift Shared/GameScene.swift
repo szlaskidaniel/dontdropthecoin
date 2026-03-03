@@ -1089,7 +1089,7 @@ class GameScene: SKScene {
     private func addDirtCloudPuffs(playIndex: Int, rng: inout DirtRNG) {
         guard let cropNode = dirtCropNode else { return }
 
-        // 2-4 cloud puffs per play — gradual build-up across 5 plays
+        // 2-4 cloud puffs per play — gradual build-up across the daily limit
         let puffCount = 2 + rng.nextInt(bound: 3)
 
         // Pre-generate textures at different sizes for variety
@@ -1116,9 +1116,12 @@ class GameScene: SKScene {
             let scale = rng.nextCGFloat(in: 0.7...1.3)
             puff.setScale(scale)
 
-            // Gradual opacity ramp: barely visible at play 1, moderate haze by play 5
-            // Play 1: ~0.10,  Play 2: ~0.17,  Play 3: ~0.24,  Play 4: ~0.31,  Play 5: ~0.38
-            let baseAlpha: CGFloat = 0.03 + CGFloat(playIndex) * 0.07
+            // Gradual opacity ramp scaled to the daily limit.
+            // With 3 plays/day this reaches the former "play 5" haze by play 3.
+            let progress = CGFloat(playIndex) / CGFloat(max(EnergyManager.maxPlays, 1))
+            // Slightly boost late-stage fog so levels 2 and 3 feel a bit cloudier.
+            let lateStageBoost: CGFloat = playIndex >= 3 ? 0.02 : (playIndex >= 2 ? 0.015 : 0.0)
+            let baseAlpha: CGFloat = 0.03 + progress * 0.35 + lateStageBoost
             puff.alpha = min(baseAlpha, 0.40)
 
             cropNode.addChild(puff)

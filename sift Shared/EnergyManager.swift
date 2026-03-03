@@ -7,14 +7,14 @@ import Foundation
 import Combine
 
 /// Manages the daily play-count energy system.
-/// Players get 5 free plays per calendar day. The count resets at midnight (local time).
+/// Players get 3 free plays per calendar day. The count resets at midnight (local time).
 /// "Cleaning the jar" (via IAP or rewarded ad) resets the counter immediately.
 final class EnergyManager: ObservableObject {
 
     static let shared = EnergyManager()
 
     /// Maximum free plays per calendar day.
-    static let maxPlays = 5
+    static let maxPlays = 3
 
     // MARK: - Published State
 
@@ -32,7 +32,7 @@ final class EnergyManager: ObservableObject {
     }
 
     /// The dirt/smudge level of the jar (0.0 = clean, 1.0 = fully dirty).
-    /// Increases linearly with each play: 0 plays → 0.0, 5 plays → 1.0.
+    /// Increases linearly with each play: 0 plays → 0.0, 3 plays → 1.0.
     var dirtLevel: Double {
         min(1.0, Double(playsUsedToday) / Double(Self.maxPlays))
     }
