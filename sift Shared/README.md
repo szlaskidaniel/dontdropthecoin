@@ -7,11 +7,13 @@
 
 Next items to implement / Fix as MVP:
 
+change to max 3 games / day
 Still find a better bg_music 
-FInd a better game over sounds
 
 
-Desing AppIcon + Lunch Screen
+Add a delay 0.5s once all items goes out the view, to check it diamonds are still inside
+
+
 
 Include Leaderbords
 Complete InApp purchases
