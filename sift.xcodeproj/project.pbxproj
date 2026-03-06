@@ -25,7 +25,6 @@
 				GameScene.sks,
 				GameScene.swift,
 				GameViewModel.swift,
-				music/bg_music.wav,
 				music/game_over.wav,
 				music/lvl_completed.wav,
 				RewardedAdManager.swift,

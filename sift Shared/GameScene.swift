@@ -460,6 +460,10 @@ class GameScene: SKScene {
     /// Tracks whether a bomb hiss is currently ramping.
     private var bombHissActive: Bool = false
 
+    // MARK: Shake Hint
+    /// Container node shown below the jar when web or poop hazards are present.
+    private var shakeHintNode: SKNode?
+
     private var isGameplayActive: Bool {
         viewModel?.gameState == .playing
     }
@@ -556,6 +560,8 @@ class GameScene: SKScene {
         bombStrikeCounts.removeAll()
         bombLastStrikeTime.removeAll()
         stopBombHiss()
+        shakeHintNode?.removeFromParent()
+        shakeHintNode = nil
         crystalSpawnIndex = 0
         stageWon = false
         gameOver = false
@@ -1588,20 +1594,20 @@ class GameScene: SKScene {
         for _ in 0..<junkCount { items.append(.randomJunk(forStage: stage)) }
         items += Array(repeating: EmojiType.balloon, count: balloonCount)
 
-        // Special items: poop spawns from stage 4+, bomb from stage 6+
+        // Special items: poop spawns from stage 4+, bomb from stage 8+
         // Each has a chance-based spawn (not guaranteed every stage)
         if stage >= 4 && Int.random(in: 0..<3) < 2 {  // ~67% chance
             items.append(.poop)
         }
-        if stage >= 6 && Int.random(in: 0..<4) < 2 {  // ~50% chance
+        if stage >= 8 && Int.random(in: 0..<4) < 2 {  // ~50% chance
             items.append(.bomb)
         }
         // Second poop at high stages
-        if stage >= 8 && Int.random(in: 0..<3) < 1 {  // ~33% chance
+        if stage >= 10 && Int.random(in: 0..<3) < 1 {  // ~33% chance
             items.append(.poop)
         }
         // Second bomb at very high stages
-        if stage >= 12 && Int.random(in: 0..<3) < 1 {  // ~33% chance
+        if stage >= 15 && Int.random(in: 0..<3) < 1 {  // ~33% chance
             items.append(.bomb)
         }
 
@@ -2102,6 +2108,141 @@ class GameScene: SKScene {
         #endif
     }
 
+    // MARK: - Shake Hint
+
+    /// Rebuilds the shake hint below the jar based on which hazards are currently on screen.
+    /// Shows the ShakeIcon alongside the emoji of each active hazard (🕸️ and/or 💩).
+    private func updateShakeHint() {
+        let hasWeb = children.contains { $0.name == "web" }
+        let hasPoop = children.contains { $0.name == "poop" }
+
+        // Nothing to hint about — remove if present
+        guard hasWeb || hasPoop else {
+            shakeHintNode?.removeFromParent()
+            shakeHintNode = nil
+            return
+        }
+
+        // Build a key representing active hazards so we can skip unnecessary rebuilds
+        let hazardKey = "\(hasWeb ? "w" : "")\(hasPoop ? "p" : "")"
+
+        if let existing = shakeHintNode, existing.userData?["hazards"] as? String == hazardKey {
+            return
+        }
+
+        // Remove old hint before rebuilding
+        shakeHintNode?.removeFromParent()
+
+        let container = SKNode()
+        container.name = "shakeHint"
+        container.zPosition = 15
+
+        let tintColor = SKColor(white: 0.75, alpha: 1.0)
+        let iconSize: CGFloat = 22
+
+        // ShakeIcon — bold effect via a slightly larger shadow copy behind the main icon
+        let shakeIconBg = SKSpriteNode(imageNamed: "ShakeIcon")
+        shakeIconBg.size = CGSize(width: iconSize + 2, height: iconSize + 2)
+        shakeIconBg.colorBlendFactor = 1.0
+        shakeIconBg.color = tintColor
+
+        let shakeIcon = SKSpriteNode(imageNamed: "ShakeIcon")
+        shakeIcon.size = CGSize(width: iconSize, height: iconSize)
+        shakeIcon.colorBlendFactor = 1.0
+        shakeIcon.color = tintColor
+
+        // "Shake to release" text label
+        let textLabel = SKLabelNode(text: "shake to release")
+        textLabel.fontName = "AvenirNext-Medium"
+        textLabel.fontSize = 11
+        textLabel.fontColor = tintColor
+        textLabel.verticalAlignmentMode = .center
+        textLabel.horizontalAlignmentMode = .left
+
+        // Render hazard emojis as white sprites using colorBlendFactor
+        var emojiSprites: [SKSpriteNode] = []
+        let emojiSize: CGFloat = 20
+        if hasWeb  { emojiSprites.append(makeWhiteEmojiSprite("🕸️", size: emojiSize, color: tintColor)) }
+        if hasPoop { emojiSprites.append(makeWhiteEmojiSprite("💩", size: emojiSize, color: tintColor)) }
+
+        // Layout: shakeIcon | "Shake to release" | emoji sprites — centered as a group
+        let iconTextSpacing: CGFloat = 4
+        let textEmojiSpacing: CGFloat = 4
+        let emojiSpacing: CGFloat = 2
+        let textWidth = textLabel.frame.width
+        let emojisWidth = CGFloat(emojiSprites.count) * emojiSize + CGFloat(max(emojiSprites.count - 1, 0)) * emojiSpacing
+        let totalWidth = iconSize + iconTextSpacing + textWidth + textEmojiSpacing + emojisWidth
+        let startX = -totalWidth / 2
+
+        let iconCenterX = startX + iconSize / 2
+        shakeIconBg.position = CGPoint(x: iconCenterX, y: 0)
+        shakeIcon.position = CGPoint(x: iconCenterX, y: 0)
+        container.addChild(shakeIconBg)
+        container.addChild(shakeIcon)
+
+        let textX = startX + iconSize + iconTextSpacing
+        textLabel.position = CGPoint(x: textX, y: -1)
+        container.addChild(textLabel)
+
+        var emojiX = textX + textWidth + textEmojiSpacing
+        for sprite in emojiSprites {
+            sprite.position = CGPoint(x: emojiX + emojiSize / 2, y: 0)
+            container.addChild(sprite)
+            emojiX += emojiSize + emojiSpacing
+        }
+
+        // Position below the jar, centered
+        container.position = CGPoint(x: frame.midX, y: jarBottomY - 28)
+
+        // Store current hazard set so we can avoid unnecessary rebuilds
+        container.userData = NSMutableDictionary()
+        container.userData?["hazards"] = hazardKey
+
+        addChild(container)
+        shakeHintNode = container
+
+        // Gentle fade-in
+        container.alpha = 0
+        container.run(.fadeAlpha(to: 0.45, duration: 0.4))
+    }
+
+    /// Renders an emoji character into a white/tinted sprite for the shake hint.
+    private func makeWhiteEmojiSprite(_ emoji: String, size: CGFloat, color: SKColor) -> SKSpriteNode {
+        let fontSize = size * 1.1
+        let padding: CGFloat = 4
+        let texSize = CGSize(width: fontSize + padding * 2, height: fontSize + padding * 2)
+
+        #if os(iOS)
+        let renderer = UIGraphicsImageRenderer(size: texSize)
+        let image = renderer.image { ctx in
+            // 1. Draw the emoji to capture its alpha shape
+            let str = NSAttributedString(
+                string: emoji,
+                attributes: [.font: UIFont.systemFont(ofSize: fontSize)]
+            )
+            let strSize = str.size()
+            let origin = CGPoint(
+                x: (texSize.width - strSize.width) / 2,
+                y: (texSize.height - strSize.height) / 2
+            )
+            str.draw(at: origin)
+
+            // 2. Composite: fill the entire rect with the tint color,
+            //    using sourceIn so only the emoji's alpha is kept.
+            let cg = ctx.cgContext
+            cg.setBlendMode(.sourceIn)
+            cg.setFillColor(color.cgColor)
+            cg.fill(CGRect(origin: .zero, size: texSize))
+        }
+        let texture = SKTexture(image: image)
+        #else
+        let texture = SKTexture()
+        #endif
+
+        let sprite = SKSpriteNode(texture: texture, size: CGSize(width: size, height: size))
+        return sprite
+    }
+
     // MARK: - CoreMotion (tilt)
 
     private func startMotion() {
@@ -2177,6 +2318,7 @@ class GameScene: SKScene {
         guard isGameplayActive, !stageWon, !gameOver, !isTransitioningShape, !isSpawning else { return }
         updateCrystalLightingAndGlints(currentTime: currentTime)
         updatePoopStretchLines()
+        updateShakeHint()
 
         // Timer ran out — game over
         if let vm = viewModel, vm.timeRemaining <= 0 {
