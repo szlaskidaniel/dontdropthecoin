@@ -1,6 +1,6 @@
 //
 //  GameViewModel.swift
-//  fizz Shared
+//  sift Shared
 //
 
 import Foundation

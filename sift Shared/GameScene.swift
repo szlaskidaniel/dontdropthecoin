@@ -1,6 +1,6 @@
 //
 //  GameScene.swift
-//  fizz Shared
+//  sift Shared
 //
 
 import SpriteKit
