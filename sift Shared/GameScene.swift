@@ -77,6 +77,29 @@ enum EmojiType: CaseIterable {
         return "junk"
     }
 
+    /// Stable key used to identify the exact type in userData for stats tracking.
+    var typeKey: String {
+        switch self {
+        case .crystal:   return "crystal"
+        case .apple:     return "apple"
+        case .teddy:     return "teddy"
+        case .shoe:      return "shoe"
+        case .rock:      return "rock"
+        case .gift:      return "gift"
+        case .paperclip: return "paperclip"
+        case .donut:     return "donut"
+        case .bolt:      return "bolt"
+        case .balloon:   return "balloon"
+        case .poop:      return "poop"
+        case .bomb:      return "bomb"
+        }
+    }
+
+    /// Reconstruct an EmojiType from its typeKey string.
+    static func from(typeKey: String) -> EmojiType? {
+        allCases.first { $0.typeKey == typeKey }
+    }
+
     /// Density — crystals are dense and gem-like, junk is light and throwable.
     var density: CGFloat {
         switch self {
@@ -1757,6 +1780,8 @@ class GameScene: SKScene {
         sprite.name                  = type.nodeName
         sprite.position              = position
         sprite.size                  = texture.size()
+        sprite.userData              = sprite.userData ?? NSMutableDictionary()
+        sprite.userData?["emojiType"] = type.typeKey
 
         // Keep scene lighting, but disable long projected light shadows.
         sprite.lightingBitMask = LightCategory.scene
@@ -2410,6 +2435,11 @@ class GameScene: SKScene {
                     removedCrystals += 1
                 } else if child.name == "balloon" {
                     removedBalloons += 1
+                }
+                // Track per-item stats
+                if let typeKey = child.userData?["emojiType"] as? String,
+                   let emojiType = EmojiType.from(typeKey: typeKey) {
+                    PlayerStats.shared.recordSortedItem(emojiType)
                 }
                 stuckNodes.removeValue(forKey: child)
                 removePoopGlueFor(node: child)
@@ -3777,6 +3807,9 @@ class GameScene: SKScene {
                 // Remove the bomb node
                 bombNode.removeAllActions()
                 bombNode.removeFromParent()
+
+                // Track bomb in stats
+                PlayerStats.shared.recordSortedItem(.bomb)
 
                 // Update junk count (bomb counts as removed junk)
                 self.viewModel?.junkRemoved(1)

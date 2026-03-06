@@ -27,6 +27,7 @@
 				GameViewModel.swift,
 				music/game_over.wav,
 				music/lvl_completed.wav,
+				PlayerStats.swift,
 				RewardedAdManager.swift,
 				SoundEffects.swift,
 				Vessels/BeakerVessel.swift,

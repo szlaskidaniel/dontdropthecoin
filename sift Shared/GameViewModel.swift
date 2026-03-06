@@ -159,6 +159,9 @@ class GameViewModel: ObservableObject {
 
         stageComplete = true
 
+        // Record saved diamonds for lifetime stats
+        PlayerStats.shared.recordDiamondsSaved(crystalsInJar)
+
         if timeRemaining > 0 {
             startTally()
         }
@@ -207,6 +210,7 @@ class GameViewModel: ObservableObject {
     func gameEnded() {
         isGameOver = true
         stopTimer()
+        PlayerStats.shared.endSession()
         if totalScore > highScore {
             highScore = totalScore
         }
@@ -220,6 +224,7 @@ class GameViewModel: ObservableObject {
     }
 
     func returnToMenuFromGameplay() {
+        PlayerStats.shared.endSession()
         reset()
         gameState = .menu
     }

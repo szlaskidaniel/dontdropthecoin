@@ -303,6 +303,7 @@ struct GameHUD: View {
 
 struct MainMenuOverlay: View {
     @ObservedObject var viewModel: GameViewModel
+    @State private var showStats = false
     var onStart: () -> Void
 
     var body: some View {
@@ -400,9 +401,37 @@ struct MainMenuOverlay: View {
                 }
                 .padding(.top, 4)
 
+                // Player Stats link
+                if PlayerStats.shared.hasStats {
+                    Button {
+                        SoundEffects.shared.playMenuClick()
+                        showStats = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "list.number")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Stats")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.3))
+                        )
+                    }
+                    .padding(.top, 4)
+                }
+
                 Spacer()
                     .frame(height: 60)
             }
+        }
+        .sheet(isPresented: $showStats) {
+            PlayerStatsSheet()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 }
@@ -612,6 +641,160 @@ private struct InfoRow: View {
                 .font(.system(size: 15, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// MARK: - Player Stats Sheet
+
+private struct PlayerStatsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var stats = PlayerStats.shared
+
+    private let accentColor = Color(red: 0.30, green: 0.86, blue: 1.00)
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.10, green: 0.03, blue: 0.14)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.top, 24)
+
+                Text("Player Stats")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                // Diamonds saved & lost
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("💎  Diamonds Saved")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.9))
+                        Spacer()
+                        Text("\(stats.totalDiamonds)")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [accentColor, Color(red: 0.80, green: 0.30, blue: 1.00)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+
+                    if stats.lostDiamonds > 0 {
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                            .padding(.horizontal, 24)
+
+                        HStack {
+                            Text("💎  Diamonds Lost")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Spacer()
+                            Text("\(stats.lostDiamonds)")
+                                .font(.system(size: 22, weight: .black, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(Color(red: 1.0, green: 0.34, blue: 0.28).opacity(0.8))
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 8)
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.ultraThinMaterial.opacity(0.3))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(accentColor.opacity(0.2), lineWidth: 0.8)
+                        )
+                )
+                .padding(.horizontal, 20)
+
+                HStack {
+                    Text("Games Played")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Text("\(stats.totalSessions)")
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(accentColor)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 4)
+
+                // Sorted items leaderboard
+                if !stats.leaderboard.isEmpty {
+                    Text("Items Sorted")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .textCase(.uppercase)
+                        .tracking(1.5)
+                        .padding(.top, 4)
+
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(stats.leaderboard.enumerated()), id: \.offset) { index, item in
+                                HStack {
+                                    Text(item.emoji)
+                                        .font(.system(size: 24))
+                                        .frame(width: 36)
+
+                                    Text(item.name)
+                                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.75))
+
+                                    Spacer()
+
+                                    Text("\(item.count)")
+                                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                                        .monospacedDigit()
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 8)
+
+                                if index < stats.leaderboard.count - 1 {
+                                    Divider()
+                                        .background(Color.white.opacity(0.08))
+                                        .padding(.horizontal, 24)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    SoundEffects.shared.playMenuClick()
+                    dismiss()
+                } label: {
+                    Text("Got it")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.ultraThinMaterial.opacity(0.4))
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.8)
+                                )
+                        )
+                }
+                .padding(.horizontal, 40)
+                .padding(.bottom, 24)
+            }
         }
     }
 }
