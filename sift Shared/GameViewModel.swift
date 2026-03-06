@@ -231,6 +231,7 @@ class GameViewModel: ObservableObject {
 
     func reset() {
         stopTally()
+        PlayerStats.shared.beginSession()
         stage = 1
         crystalsInJar = 0
         junkRemaining = 0
