@@ -370,7 +370,7 @@ struct MainMenuOverlay: View {
                 }
                 .padding(.horizontal, 50)
 
-                Text("Tilt to clear the clutter.\nKeep only 💎 crystals. 3 plays daily.")
+                Text("Tilt to clear the clutter.\nKeep only 💎 crystals.")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.4))
