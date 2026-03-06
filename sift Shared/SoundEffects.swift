@@ -237,7 +237,8 @@ final class SoundEffects: NSObject, AVAudioPlayerDelegate {
     }
 
     private static func loadBundleWAV(named name: String) -> Data {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "wav"),
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav")
+                ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "music"),
               let data = try? Data(contentsOf: url) else {
             assertionFailure("Missing sound file: \(name).wav")
             return Data()

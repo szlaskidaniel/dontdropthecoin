@@ -638,6 +638,7 @@ class GameScene: SKScene {
 
         let url =
             Bundle.main.url(forResource: "bg_music", withExtension: "wav")
+            ?? Bundle.main.url(forResource: "bg_music", withExtension: "wav", subdirectory: "music")
         guard let url else { return }
 
         do {
