@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		65DCECD62F5ACE6900A6E479 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 65DCECD52F5ACE6900A6E479 /* GoogleMobileAds */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		656A01912F50A0A8004BCF72 /* sift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sift.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -24,6 +28,7 @@
 				music/bg_music.mp3,
 				music/game_over.wav,
 				music/lvl_completed.wav,
+				RewardedAdManager.swift,
 				SoundEffects.swift,
 				Vessels/BeakerVessel.swift,
 				Vessels/BottleVessel.swift,
@@ -69,6 +74,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				65DCECD62F5ACE6900A6E479 /* GoogleMobileAds in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +118,7 @@
 			);
 			name = "sift iOS";
 			packageProductDependencies = (
+				65DCECD52F5ACE6900A6E479 /* GoogleMobileAds */,
 			);
 			productName = "sift iOS";
 			productReference = 656A01912F50A0A8004BCF72 /* sift.app */;
@@ -141,6 +148,9 @@
 			);
 			mainGroup = 656A01832F50A0A7004BCF72;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				65DCECD42F5ACE6900A6E479 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 656A01922F50A0A8004BCF72 /* Products */;
 			projectDirPath = "";
@@ -181,6 +191,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 27E8998HNH;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "sift-iOS-Info.plist";
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -220,6 +231,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 27E8998HNH;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "sift-iOS-Info.plist";
 				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.puzzle-games";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -393,6 +405,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		65DCECD42F5ACE6900A6E479 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 13.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		65DCECD52F5ACE6900A6E479 /* GoogleMobileAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 65DCECD42F5ACE6900A6E479 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 656A01842F50A0A7004BCF72 /* Project object */;
 }

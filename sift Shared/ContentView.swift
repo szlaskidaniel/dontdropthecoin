@@ -707,6 +707,7 @@ struct GameOverOverlay: View {
 
 struct DailyLimitOverlay: View {
     @ObservedObject var viewModel: GameViewModel
+    @ObservedObject var adManager: RewardedAdManager = .shared
     let scene: GameScene
     /// When true, plays the dirt splatter animation before revealing the UI.
     let playDirtAnimation: Bool
@@ -792,17 +793,32 @@ struct DailyLimitOverlay: View {
                     // "Watch Ad to Clean" button
                     Button {
                         SoundEffects.shared.playMenuClick()
-                        // TODO: Trigger rewarded ad flow
-                        // For now, immediately clean (placeholder)
-                        scene.removeDirtExplosion()
-                        viewModel.cleanJar()
-                        onClean()
+                        guard let rootVC = UIApplication.shared
+                            .connectedScenes
+                            .compactMap({ $0 as? UIWindowScene })
+                            .flatMap(\.windows)
+                            .first(where: \.isKeyWindow)?
+                            .rootViewController else { return }
+
+                        RewardedAdManager.shared.showAd(from: rootVC) {
+                            // Reward earned — clean the jar
+                            scene.removeDirtExplosion()
+                            viewModel.cleanJar()
+                            onClean()
+                        }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "play.rectangle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                            Text("Watch Ad to Clean")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                            if adManager.isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Loading Ad...")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                            } else {
+                                Image(systemName: "play.rectangle.fill")
+                                    .font(.system(size: 18, weight: .semibold))
+                                Text("Watch Ad to Clean")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                            }
                         }
                         .foregroundStyle(.white.opacity(0.85))
                         .frame(maxWidth: .infinity)
@@ -816,6 +832,7 @@ struct DailyLimitOverlay: View {
                                 )
                         )
                     }
+                    .disabled(adManager.isLoading)
                     .padding(.horizontal, 40)
 
                     // Back to menu

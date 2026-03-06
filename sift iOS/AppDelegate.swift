@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import GoogleMobileAds
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,7 +15,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Initialize Google Mobile Ads SDK, then preload rewarded ad
+        MobileAds.shared.start()
+        NSLog("[AdMob] SDK start() called")
+        // Preload the first rewarded ad after SDK is ready
+        _ = RewardedAdManager.shared
         return true
     }
 
