@@ -607,7 +607,9 @@ class GameScene: SKScene {
     private func startBackgroundMusic() {
         guard bgMusicPlayer == nil || bgMusicPlayer?.isPlaying == false else { return }
 
-        guard let url = Bundle.main.url(forResource: "bg_music", withExtension: "mp3") else { return }
+        let url =
+            Bundle.main.url(forResource: "bg_music", withExtension: "wav")
+        guard let url else { return }
 
         do {
             let player = try AVAudioPlayer(contentsOf: url)
