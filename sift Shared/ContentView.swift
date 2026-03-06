@@ -800,7 +800,10 @@ struct DailyLimitOverlay: View {
                             .first(where: \.isKeyWindow)?
                             .rootViewController else { return }
 
-                        RewardedAdManager.shared.showAd(from: rootVC) {
+                        scene.pauseBackgroundMusic()
+                        RewardedAdManager.shared.showAd(from: rootVC, onDismiss: {
+                            scene.resumeBackgroundMusic()
+                        }) {
                             // Reward earned — clean the jar
                             scene.removeDirtExplosion()
                             viewModel.cleanJar()

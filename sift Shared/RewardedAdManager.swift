@@ -22,6 +22,9 @@ final class RewardedAdManager: NSObject, ObservableObject, FullScreenContentDele
     /// Callback to fire after the ad is dismissed, only if the user earned the reward.
     private var pendingRewardCallback: (() -> Void)?
 
+    /// Callback to fire whenever the ad is dismissed, regardless of reward.
+    private var pendingDismissCallback: (() -> Void)?
+
     /// Whether an ad is loaded and ready to show.
     @Published private(set) var isAdReady = false
 
@@ -68,8 +71,10 @@ final class RewardedAdManager: NSObject, ObservableObject, FullScreenContentDele
     /// Present the rewarded ad from the given view controller.
     /// If the ad isn't loaded yet, loads one first and then presents it.
     /// Calls `onRewardEarned` when the user earns the reward.
-    func showAd(from viewController: UIViewController, onRewardEarned: @escaping () -> Void) {
+    /// Calls `onDismiss` whenever the ad is dismissed, regardless of reward outcome.
+    func showAd(from viewController: UIViewController, onDismiss: (() -> Void)? = nil, onRewardEarned: @escaping () -> Void) {
         NSLog("[AdMob] showAd called — isAdReady: %d, hasAd: %d", isAdReady ? 1 : 0, rewardedAd != nil ? 1 : 0)
+        pendingDismissCallback = onDismiss
 
         if let rewardedAd {
             presentAd(rewardedAd, from: viewController, onRewardEarned: onRewardEarned)
@@ -96,6 +101,8 @@ final class RewardedAdManager: NSObject, ObservableObject, FullScreenContentDele
                 self.rewardedAd = nil
                 self.isAdReady = false
                 self.isLoading = false
+                self.pendingDismissCallback?()
+                self.pendingDismissCallback = nil
             }
         }
     }
@@ -114,11 +121,14 @@ final class RewardedAdManager: NSObject, ObservableObject, FullScreenContentDele
     nonisolated func adDidDismissFullScreenContent(_ ad: FullScreenPresentingAd) {
         NSLog("[AdMob] Ad dismissed")
         Task { @MainActor in
-            let callback = self.pendingRewardCallback
+            let rewardCallback = self.pendingRewardCallback
+            let dismissCallback = self.pendingDismissCallback
             self.pendingRewardCallback = nil
+            self.pendingDismissCallback = nil
             self.rewardedAd = nil
             self.isAdReady = false
-            callback?()
+            rewardCallback?()
+            dismissCallback?()
             self.loadAd()
         }
     }
@@ -126,8 +136,11 @@ final class RewardedAdManager: NSObject, ObservableObject, FullScreenContentDele
     nonisolated func ad(_ ad: FullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
         NSLog("[AdMob] Failed to present ad: %@", error.localizedDescription)
         Task { @MainActor in
+            let dismissCallback = self.pendingDismissCallback
+            self.pendingDismissCallback = nil
             self.rewardedAd = nil
             self.isAdReady = false
+            dismissCallback?()
             self.loadAd()
         }
     }

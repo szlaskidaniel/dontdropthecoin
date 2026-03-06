@@ -630,6 +630,19 @@ class GameScene: SKScene {
         bgMusicPlayer = nil
     }
 
+    /// Pause background music (e.g. while an ad is playing). Does nothing if already paused/muted.
+    func pauseBackgroundMusic() {
+        bgMusicPlayer?.pause()
+    }
+
+    /// Resume background music after an ad, only if the user hasn't muted music.
+    func resumeBackgroundMusic() {
+        guard viewModel?.isMusicMuted != true else { return }
+        if let player = bgMusicPlayer, !player.isPlaying {
+            player.play()
+        }
+    }
+
     private func applyMusicMuteState(_ muted: Bool) {
         guard let player = bgMusicPlayer else { return }
         if muted {
