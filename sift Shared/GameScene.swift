@@ -514,8 +514,8 @@ class GameScene: SKScene {
         let maxFPS = view.window?.windowScene?.screen.maximumFramesPerSecond ?? 60
         view.preferredFramesPerSecond = min(120, maxFPS)
         #endif
-        view.showsFPS = false
-        view.showsNodeCount = true
+        // Debug options (showsFPS, showsNodeCount) are configured
+        // via SpriteView.DebugOptions in ContentView.
 
         #if os(iOS)
         // Disable expensive scene effects in low-power mode.

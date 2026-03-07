@@ -15,6 +15,12 @@ import CoreMotion
 
 struct ContentView: View {
 
+    #if DEBUG
+    private static let spriteDebugOptions: SpriteView.DebugOptions = [.showsFPS, .showsNodeCount]
+    #else
+    private static let spriteDebugOptions: SpriteView.DebugOptions = []
+    #endif
+
     @StateObject private var viewModel = GameViewModel()
 
     /// Kept in @State so the scene is created once and survives re-renders.
@@ -25,19 +31,13 @@ struct ContentView: View {
             // ── Game canvas ──────────────────────────────────────────
             SpriteView(
                 scene: scene,
-                options: [.shouldCullNonVisibleNodes, .allowsTransparency]
+                options: [.shouldCullNonVisibleNodes, .allowsTransparency],
+                debugOptions: Self.spriteDebugOptions
             )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .onAppear {
                     scene.viewModel = viewModel
-                    // Request 120Hz ProMotion refresh rate
-                    if let skView = scene.view {
-                        let maxFPS = skView.window?.windowScene?.screen.maximumFramesPerSecond ?? 60
-                        skView.preferredFramesPerSecond = min(120, maxFPS)
-                        skView.ignoresSiblingOrder = true
-                        skView.showsFPS = false
-                    }
                 }
 
             // ── HUD overlay (only while playing) ─────────────────────
